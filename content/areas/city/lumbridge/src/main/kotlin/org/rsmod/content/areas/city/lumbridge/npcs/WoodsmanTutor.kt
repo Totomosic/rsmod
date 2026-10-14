@@ -1,16 +1,59 @@
 package org.rsmod.content.areas.city.lumbridge.npcs
 
 import org.rsmod.api.config.refs.content
+import org.rsmod.api.config.refs.invs
 import org.rsmod.api.config.refs.objs
+import org.rsmod.api.config.refs.stats
+import org.rsmod.api.invtx.add
+import org.rsmod.api.invtx.delete
 import org.rsmod.api.invtx.invAdd
+import org.rsmod.api.invtx.invTransaction
+import org.rsmod.api.invtx.select
 import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.baseWoodcuttingLvl
+import org.rsmod.api.player.stat.statBase
 import org.rsmod.api.script.advanced.onUnimplementedOpNpc1
+import org.rsmod.api.type.refs.obj.ObjReferences
 import org.rsmod.content.areas.city.lumbridge.configs.lumbridge_npcs
 import org.rsmod.game.entity.Npc
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
+
+private const val SKILLCAPE_PRICE = 99000
+
+private val ALL_STATS =
+    listOf(
+        stats.attack,
+        stats.defence,
+        stats.strength,
+        stats.hitpoints,
+        stats.ranged,
+        stats.prayer,
+        stats.magic,
+        stats.cooking,
+        stats.woodcutting,
+        stats.fletching,
+        stats.fishing,
+        stats.firemaking,
+        stats.crafting,
+        stats.smithing,
+        stats.mining,
+        stats.herblore,
+        stats.agility,
+        stats.thieving,
+        stats.slayer,
+        stats.farming,
+        stats.runecrafting,
+        stats.hunter,
+        stats.construction,
+    )
+
+internal object TutorObjs : ObjReferences() {
+    val cape = find("skillcape_woodcutting")
+    val cape_trimmed = find("skillcape_woodcutting_trimmed")
+    val hood = find("skillcape_woodcutting_hood")
+}
 
 class WoodsmanTutor : PluginScript() {
     override fun ScriptContext.startup() {
@@ -23,12 +66,104 @@ class WoodsmanTutor : PluginScript() {
 
     private suspend fun Dialogue.woodsmanDialogue() {
         when {
-            player.baseWoodcuttingLvl >= 99 -> TODO("Mastery dialogue")
+            player.baseWoodcuttingLvl >= 99 -> masteryDialogue()
             player.baseWoodcuttingLvl in 29..98 -> highLevelMenu()
             player.baseWoodcuttingLvl in 20..28 -> intermediateLevelMenu()
             else -> lowLevelMenu()
         }
     }
+
+    private suspend fun Dialogue.masteryDialogue() {
+        chatNpc(
+            happy,
+            "Wow! It's not often I meet somebody as accomplished as you in Woodcutting! " +
+                "Perhaps you should become the tutor, instead of me! Seeing as you're so " +
+                "skilled, maybe you are interested in buying a Skillcape of",
+        )
+        chatNpc(quiz, "Woodcutting?")
+        val choice = choice2("No, thanks.", 1, "Yes, please", 2)
+        if (choice == 1) {
+            chatPlayer(neutral, "No, thanks.")
+            chatNpc(neutral, "Ok, come back to me if you change your mind.")
+            return
+        }
+        chatPlayer(happy, "Yes, please.")
+        if (ownsWoodcuttingCape()) {
+            val option = choice2("Skillcape", 1, "Hood", 2)
+            if (option == 2) {
+                anotherHood()
+                return
+            }
+        }
+        buySkillcape()
+    }
+
+    private suspend fun Dialogue.buySkillcape() {
+        chatNpc(
+            happy,
+            "Anybody who has spent as much time cutting trees as you deserves the right " +
+                "to own one. Wearing this cape will increase your chance of finding bird's " +
+                "nests. That'll be 99000 coins, please.",
+        )
+        val choice = choice2("99000! That's too rich for me.", 1, "No problem.", 2)
+        if (choice == 1) {
+            chatPlayer(sad, "99000! That's too rich for me.")
+            chatNpc(
+                neutral,
+                "Well go chop down a few mahogany trees and sell the timber; then you'll be " +
+                    "able to afford one.",
+            )
+            return
+        }
+        chatPlayer(happy, "No problem.")
+        if (access.invTotal(player.inv, objs.coins) < SKILLCAPE_PRICE) {
+            chatPlayer(sad, "But, unfortunately, I don't have enough money with me.")
+            chatNpc(neutral, "Well come back and see me when you do.")
+            return
+        }
+        val cape = if (hasMultipleMasteries()) TutorObjs.cape_trimmed else TutorObjs.cape
+        val transaction =
+            player.invTransaction(player.inv) {
+                val inv = select(player.inv)
+                delete(inv, objs.coins.id, SKILLCAPE_PRICE, slot = null, strict = true)
+                add(inv, cape.id, 1, slot = null, strict = true)
+                add(inv, TutorObjs.hood.id, 1, slot = null, strict = true)
+            }
+        if (!transaction.success) {
+            chatNpc(
+                neutral,
+                "Unfortunately all Skillcapes are only available with a free hood, it's part " +
+                    "of a skill promotion deal; buy one get one free, you know. So you'll need " +
+                    "to free up some inventory space before I can sell you one.",
+            )
+            return
+        }
+        chatNpc(happy, "Excellent! Wear that cape with pride my friend.")
+    }
+
+    private suspend fun Dialogue.anotherHood() {
+        chatPlayer(quiz, "May I have another hood for my cape, please?")
+        if (player.inv.isFull()) {
+            chatNpc(
+                neutral,
+                "You don't appear to have enough space in your inventory, come back and see " +
+                    "me when you do.",
+            )
+            return
+        }
+        chatNpc(happy, "Most certainly, and free of charge!")
+        player.invAdd(player.inv, TutorObjs.hood)
+        objbox(TutorObjs.hood, "The tutor hands you another hood for your skillcape.")
+    }
+
+    private fun Dialogue.ownsWoodcuttingCape(): Boolean {
+        val bank = player.invMap[invs.bank]
+        val inventories = listOfNotNull(player.inv, player.worn, bank)
+        return inventories.any { TutorObjs.cape in it || TutorObjs.cape_trimmed in it }
+    }
+
+    private fun Dialogue.hasMultipleMasteries(): Boolean =
+        ALL_STATS.count { player.statBase(it) >= 99 } > 1
 
     private suspend fun Dialogue.lowLevelMenu() {
         val choice =

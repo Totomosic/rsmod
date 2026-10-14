@@ -8,8 +8,8 @@ import org.rsmod.map.CoordGrid
  * a map square.
  *
  * This class uses a compact integer representation [packed] to encode the [x], [z], and [level]
- * coordinates of a zone. Unlike [org.rsmod.map.square.MapSquareKey], which identifies an entire map
- * square across all levels (0-3), [ZoneKey] includes the specific level in its identification,
+ * coordinates of a zone. Unlike [org.rsmod.map.square.MapSquareKey], which identifies an entire
+ * map square across all levels (0-3), [ZoneKey] includes the specific level in its identification,
  * allowing more precise localization.
  *
  * ### Example Usage:

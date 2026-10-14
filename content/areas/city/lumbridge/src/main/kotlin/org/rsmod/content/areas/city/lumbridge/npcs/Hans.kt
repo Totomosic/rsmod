@@ -1,5 +1,6 @@
 package org.rsmod.content.areas.city.lumbridge.npcs
 
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onOpNpc1
@@ -72,11 +73,25 @@ class Hans : PluginScript() {
         startDialogue(npc) { playtimeDialogue() }
 
     private suspend fun Dialogue.playtimeDialogue() {
-        // TODO(content): playtime
+        // The `playtime` varp is incremented once per game cycle (600ms), so 100 cycles make up
+        // one minute (the same conversion the account summary side panel uses).
+        val totalMinutes = vars[varps.playtime] / CYCLES_PER_MINUTE
+        val days = totalMinutes / MINUTES_PER_DAY
+        val hours = (totalMinutes % MINUTES_PER_DAY) / MINUTES_PER_HOUR
+        val minutes = totalMinutes % MINUTES_PER_HOUR
+        // TODO(content): account creation date. It is not available on the player, so the number
+        //  of days since arrival falls back to the days spent in the world (its lower bound).
+        val arrivedDaysAgo = days
         chatNpc(
             happy,
-            "You've spent 0 days, 0 hours, 0 minutes in the " +
-                "world since you arrived 0 days ago.",
+            "You've spent $days days, $hours hours, $minutes minutes in the " +
+                "world since you arrived $arrivedDaysAgo days ago.",
         )
+    }
+
+    private companion object {
+        const val CYCLES_PER_MINUTE = 100
+        const val MINUTES_PER_HOUR = 60
+        const val MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
     }
 }

@@ -8,9 +8,11 @@ import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.ui.IfOverlayButton
 import org.rsmod.api.player.ui.IfOverlayDrag
+import org.rsmod.api.player.ui.IfOverlaySubOp
 import org.rsmod.api.player.ui.ifClose
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.script.onIfOverlayDrag
+import org.rsmod.api.script.onIfOverlaySubOp
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.HeldOp
@@ -27,6 +29,7 @@ private constructor(
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onIfOverlayButton(components.inv_items) { opHeldButton() }
+        onIfOverlaySubOp(components.inv_items) { opHeldSubOp() }
         onIfOverlayDrag(components.inv_items) { dragHeldButton() }
     }
 
@@ -48,6 +51,20 @@ private constructor(
         protectedAccess.launch(this) {
             clearPendingAction()
             interactions.interact(this, inv, invSlot, op)
+        }
+    }
+
+    private fun IfOverlaySubOp.opHeldSubOp() {
+        val heldOp = op.toHeldOp() ?: return
+        val invSlot = comsub
+        player.ifClose(eventBus)
+        if (player.isAccessProtected) {
+            resendSlot(player.inv, 0)
+            return
+        }
+        protectedAccess.launch(player) {
+            clearPendingAction()
+            interactions.interactSubOp(this, inv, invSlot, heldOp, subop)
         }
     }
 

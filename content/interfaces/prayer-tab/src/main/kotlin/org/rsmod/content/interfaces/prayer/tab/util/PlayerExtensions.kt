@@ -11,6 +11,9 @@ import org.rsmod.game.entity.Player
 
 internal var Player.drainCounter by intVarBit(varbits.prayer_drain_counter)
 
+internal const val PROTECTION_PRAYERS_DISABLED_MESSAGE =
+    "You cannot use protection prayers at the moment."
+
 internal fun ProtectedAccess.enablePrayerStatRegen(prayer: Prayer) {
     when {
         prayer.enabled.isType(varbits.rapid_restore) -> {

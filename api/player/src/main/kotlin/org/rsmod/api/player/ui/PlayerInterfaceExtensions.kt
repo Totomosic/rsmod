@@ -30,6 +30,7 @@ import org.rsmod.api.player.output.ClientScripts.confirmOverlayInit
 import org.rsmod.api.player.output.ClientScripts.ifSetTextAlign
 import org.rsmod.api.player.output.ClientScripts.menu
 import org.rsmod.api.player.output.ClientScripts.objboxSetButtons
+import org.rsmod.api.player.output.ClientScripts.skillMultiSetup
 import org.rsmod.api.player.output.ClientScripts.topLevelChatboxResetBackground
 import org.rsmod.api.player.output.ClientScripts.topLevelMainModalBackground
 import org.rsmod.api.player.output.ClientScripts.topLevelMainModalOpen
@@ -534,6 +535,39 @@ internal fun Player.ifMenu(
     menu(this, title, joinedChoices, hotkeys)
     ifSetEvents(components.menu_list, 0..127, IfEvent.PauseButton)
 }
+
+/** @see [skillMultiSetup] */
+internal fun Player.ifSkillMulti(
+    type: Int,
+    joinedTitleAndNames: String,
+    maxQuantity: Int,
+    objs: List<Int>,
+    suggestedQuantity: Int,
+    eventBus: EventBus,
+) {
+    ifOpenChat(interfaces.skillmulti, constants.modal_infinitewidthandheight, eventBus)
+    skillMultiSetup(this, type, joinedTitleAndNames, maxQuantity, objs, suggestedQuantity)
+    for (button in skillMultiButtons) {
+        ifSetEvents(button, 0..SKILL_MULTI_MAX_QUANTITY, IfEvent.PauseButton)
+    }
+}
+
+internal val skillMultiButtons =
+    listOf(
+        components.skillmulti_a,
+        components.skillmulti_b,
+        components.skillmulti_c,
+        components.skillmulti_d,
+        components.skillmulti_e,
+        components.skillmulti_f,
+        components.skillmulti_g,
+        components.skillmulti_h,
+        components.skillmulti_i,
+        components.skillmulti_j,
+    )
+
+/** The highest quantity the `skillmulti` interface sends back (an entire inventory). */
+internal const val SKILL_MULTI_MAX_QUANTITY: Int = 28
 
 /** @see [chatboxMultiInit] */
 internal fun Player.ifChoice(

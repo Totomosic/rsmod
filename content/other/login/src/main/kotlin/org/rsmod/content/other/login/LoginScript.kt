@@ -88,7 +88,10 @@ constructor(
         chatboxUnlocked = displayName.isNotBlank()
         hideRoofs = true
         for (varp in transmitVars) {
-            if (varp in vars) {
+            // Varps with a client code (e.g. the player and npc attack option settings) must be
+            // sent even when 0: the client only applies their setting when it receives the varp,
+            // and `VarpReset` does not do so.
+            if (varp in vars || varp.clientCode > 0) {
                 resyncVar(varp)
             }
         }

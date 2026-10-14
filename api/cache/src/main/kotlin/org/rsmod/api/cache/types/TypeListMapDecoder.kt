@@ -13,6 +13,7 @@ import org.rsmod.api.cache.types.gameval.GameValDecoder
 import org.rsmod.api.cache.types.headbar.HeadbarTypeDecoder
 import org.rsmod.api.cache.types.hitmark.HitmarkTypeDecoder
 import org.rsmod.api.cache.types.hunt.HuntModeTypeDecoder
+import org.rsmod.api.cache.types.idk.IdentKitTypeDecoder
 import org.rsmod.api.cache.types.inv.InvTypeDecoder
 import org.rsmod.api.cache.types.jingle.JingleTypeDecoder
 import org.rsmod.api.cache.types.loc.LocTypeDecoder
@@ -75,6 +76,7 @@ public object TypeListMapDecoder {
         val modLevels = ModLevelTypeDecoder.decodeAll(cache)
         val clientscripts = ClientScriptTypeDecoder.decodeAll(cache)
         val models = ModelTypeSimpleDecoder.decodeAll(cache)
+        val identKits = IdentKitTypeDecoder.decodeAll(cache)
 
         val typeList =
             TypeListMap(
@@ -111,6 +113,7 @@ public object TypeListMapDecoder {
                 modLevels = modLevels,
                 clientscripts = clientscripts,
                 models = models,
+                identKits = identKits,
             )
 
         return typeList.apply {

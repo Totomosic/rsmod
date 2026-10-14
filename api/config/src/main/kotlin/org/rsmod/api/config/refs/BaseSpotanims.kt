@@ -133,4 +133,6 @@ object BaseSpotanims : SpotanimReferences() {
     val tumekens_shadow_casting = find("tumekens_shadow_casting", 169100896)
     val tumekens_shadow_travel = find("tumekens_shadow_travel", 168395493)
     val tumekens_shadow_impact = find("tumekens_shadow_impact", 168399276)
+    val redemption = find("redemption_spotanim")
+    val retribution = find("retribution_spotanim")
 }

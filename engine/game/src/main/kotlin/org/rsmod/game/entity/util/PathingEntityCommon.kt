@@ -18,15 +18,15 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
  * multiple entities need to share, while also accommodating the need for certain entities to handle
  * additional, specialized logic after invoking these common functions.
  *
- * For example, both [org.rsmod.game.entity.Npc] and [org.rsmod.game.entity.Player] can use the same
- * logic for facing another player. However, NPCs might require extra steps, such as updating
- * related state with extended info, whereas Players may only need to rely on the base
+ * For example, both [org.rsmod.game.entity.Npc] and [org.rsmod.game.entity.Player] can use
+ * the same logic for facing another player. However, NPCs might require extra steps, such as
+ * updating related state with extended info, whereas Players may only need to rely on the base
  * functionality.
  *
  * Additionally, concepts like "protected access" influence the exposure of these functions. For
  * instance, NPCs do not have the concept of protected access and can call methods like
- * [org.rsmod.game.entity.Npc.telejump] directly. Players, however, may require these functions to
- * be more restricted to ensure proper access control.
+ * [org.rsmod.game.entity.Npc.telejump] directly. Players, however, may require these functions
+ * to be more restricted to ensure proper access control.
  *
  * By centralizing this logic here, we minimize code duplication and ensure consistent behavior
  * across different entities, while still allowing for the flexibility needed by specific

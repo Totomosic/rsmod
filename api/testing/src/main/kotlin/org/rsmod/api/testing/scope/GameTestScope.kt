@@ -11,28 +11,42 @@ import kotlin.contracts.contract
 import kotlin.reflect.KClass
 import net.rsprot.protocol.game.incoming.buttons.If3Button
 import net.rsprot.protocol.game.incoming.buttons.IfButtonD
+import net.rsprot.protocol.game.incoming.buttons.IfButtonT
+import net.rsprot.protocol.game.incoming.buttons.IfSubOp
 import net.rsprot.protocol.game.incoming.locs.OpLoc
+import net.rsprot.protocol.game.incoming.locs.OpLocT
 import net.rsprot.protocol.game.incoming.misc.user.MoveGameClick
 import net.rsprot.protocol.game.incoming.npcs.OpNpc
 import net.rsprot.protocol.game.incoming.resumed.ResumePCountDialog
+import net.rsprot.protocol.game.incoming.resumed.ResumePStringDialog
+import net.rsprot.protocol.game.incoming.resumed.ResumePauseButton
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import net.rsprot.protocol.util.CombinedId
 import org.junit.jupiter.api.Assertions
 import org.rsmod.annotations.InternalApi
 import org.rsmod.api.account.character.CharacterDataStage
+import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.db.Database
 import org.rsmod.api.db.DatabaseConnection
+import org.rsmod.api.drop.table.NpcDropTableProvider
+import org.rsmod.api.drop.table.NpcDropTables
 import org.rsmod.api.game.process.GameCycle
 import org.rsmod.api.inv.map.InvMapInit
 import org.rsmod.api.market.DefaultMarketPrices
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.net.rsprot.handlers.If3ButtonHandler
 import org.rsmod.api.net.rsprot.handlers.IfButtonDHandler
+import org.rsmod.api.net.rsprot.handlers.IfButtonTHandler
+import org.rsmod.api.net.rsprot.handlers.IfSubOpHandler
 import org.rsmod.api.net.rsprot.handlers.MoveGameClickHandler
 import org.rsmod.api.net.rsprot.handlers.OpLocHandler
+import org.rsmod.api.net.rsprot.handlers.OpLocTHandler
 import org.rsmod.api.net.rsprot.handlers.OpNpcHandler
 import org.rsmod.api.net.rsprot.handlers.ResumePCountDialogHandler
+import org.rsmod.api.net.rsprot.handlers.ResumePStringDialogHandler
+import org.rsmod.api.net.rsprot.handlers.ResumePauseButtonHandler
 import org.rsmod.api.npc.apPlayer2
 import org.rsmod.api.npc.hit.modifier.NpcHitModifier
 import org.rsmod.api.npc.hit.modifier.StandardNpcHitModifier
@@ -51,6 +65,7 @@ import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.ui.ifClose
 import org.rsmod.api.player.ui.ifOpenMain
 import org.rsmod.api.player.ui.ifOpenSub
+import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.varMoveSpeed
 import org.rsmod.api.random.CoreRandom
@@ -142,7 +157,9 @@ import org.rsmod.game.type.dbtable.DbTableTypeList
 import org.rsmod.game.type.enums.EnumTypeList
 import org.rsmod.game.type.font.FontMetricsTypeList
 import org.rsmod.game.type.hunt.HuntModeTypeList
+import org.rsmod.game.type.idk.IdentKitTypeList
 import org.rsmod.game.type.interf.IfButtonOp
+import org.rsmod.game.type.interf.IfEvent
 import org.rsmod.game.type.interf.IfSubType
 import org.rsmod.game.type.interf.InterfaceType
 import org.rsmod.game.type.interf.InterfaceTypeList
@@ -202,9 +219,14 @@ constructor(
     private val protectedAccess: ProtectedAccessLauncher,
     private val ifButtonHandler: If3ButtonHandler,
     private val ifButtonDHandler: IfButtonDHandler,
+    private val ifButtonTHandler: IfButtonTHandler,
+    private val ifSubOpHandler: IfSubOpHandler,
     private val gameClickHandler: MoveGameClickHandler,
     private val resumePCountDialog: ResumePCountDialogHandler,
+    private val resumePStringDialog: ResumePStringDialogHandler,
     private val opLocHandler: OpLocHandler,
+    private val opLocTHandler: OpLocTHandler,
+    private val resumePauseButtonHandler: ResumePauseButtonHandler,
     private val opNpcHandler: OpNpcHandler,
     private val aiPlayerInteractions: AiPlayerInteractions,
     private val npcHitModifier: NpcHitModifier,
@@ -387,6 +409,115 @@ constructor(
         captureClient.queue(opLocHandler, message)
     }
 
+    /**
+     * Uses the inv obj in [invSlot] on [loc]. The inventory side panel is opened (with target
+     * events enabled) if it is not already open.
+     */
+    public fun Player.opLocU(loc: BoundLocInfo, invSlot: Int, controlKey: Boolean = false) {
+        val obj = checkNotNull(inv[invSlot]) { "No inv obj in slot `$invSlot`." }
+        if (!ui.containsOverlay(interfaces.inventory)) {
+            ifOpenOverlay(interfaces.inventory, components.toplevel_target_side3)
+        }
+        ifSetEvents(components.inv_items, inv.indices, IfEvent.TgtLoc)
+        val selected = CombinedId(components.inv_items.interfaceId, components.inv_items.component)
+        val message =
+            OpLocT(
+                id = loc.id,
+                x = loc.coords.x,
+                z = loc.coords.z,
+                controlKey = controlKey,
+                selectedObj = obj.id,
+                selectedSub = invSlot,
+                selectedCombinedId = selected,
+            )
+        captureClient.queue(opLocTHandler, message)
+    }
+
+    /**
+     * Clicks held op [op] (`1`-`5`, e.g. `1` for "Eat") on the inventory obj in [invSlot], opening
+     * the inventory overlay (with its op events enabled) if it is not already open.
+     */
+    public fun Player.opHeld(invSlot: Int, op: Int = 1) {
+        val obj = checkNotNull(inv[invSlot]) { "No inv obj in slot `$invSlot`." }
+        if (!ui.containsOverlay(interfaces.inventory)) {
+            ifOpenOverlay(interfaces.inventory, components.toplevel_target_side3)
+        }
+        ifSetEvents(
+            components.inv_items,
+            inv.indices,
+            IfEvent.Op2,
+            IfEvent.Op3,
+            IfEvent.Op4,
+            IfEvent.Op6,
+            IfEvent.Op7,
+        )
+        // The inventory's interface ops are offset from the obj's held ops.
+        val buttonOp =
+            when (op) {
+                1 -> IfButtonOp.Op2
+                2 -> IfButtonOp.Op3
+                3 -> IfButtonOp.Op4
+                4 -> IfButtonOp.Op6
+                5 -> IfButtonOp.Op7
+                else -> throw IllegalArgumentException("Invalid held op: $op")
+            }
+        ifButton(components.inv_items, comsub = invSlot, op = buttonOp, obj = obj.id)
+    }
+
+    /**
+     * Picks sub-op [subop] (1-based) from held op [op]'s right-click submenu on the inventory obj
+     * in [invSlot] (the client's `IF_SUBOP`), e.g. "Rub" → "Edgeville" on an amulet of glory.
+     */
+    public fun Player.opHeldSubOp(invSlot: Int, op: Int, subop: Int) {
+        val obj = checkNotNull(inv[invSlot]) { "No inv obj in slot `$invSlot`." }
+        if (!ui.containsOverlay(interfaces.inventory)) {
+            ifOpenOverlay(interfaces.inventory, components.toplevel_target_side3)
+        }
+        ifSetEvents(
+            components.inv_items,
+            inv.indices,
+            IfEvent.Op2,
+            IfEvent.Op3,
+            IfEvent.Op4,
+            IfEvent.Op6,
+            IfEvent.Op7,
+        )
+        val buttonOp =
+            when (op) {
+                1 -> IfButtonOp.Op2
+                2 -> IfButtonOp.Op3
+                3 -> IfButtonOp.Op4
+                4 -> IfButtonOp.Op6
+                5 -> IfButtonOp.Op7
+                else -> throw IllegalArgumentException("Invalid held op: $op")
+            }
+        val combinedId =
+            CombinedId(components.inv_items.interfaceId, components.inv_items.component)
+        val message = IfSubOp(combinedId, invSlot, obj.id, buttonOp.slot, subop)
+        captureClient.queue(ifSubOpHandler, message)
+    }
+
+    /** Uses the inventory obj in [selectedSlot] on the inventory obj in [targetSlot]. */
+    public fun Player.opHeldU(selectedSlot: Int, targetSlot: Int) {
+        val selected = checkNotNull(inv[selectedSlot]) { "No inv obj in slot `$selectedSlot`." }
+        val target = checkNotNull(inv[targetSlot]) { "No inv obj in slot `$targetSlot`." }
+        if (!ui.containsOverlay(interfaces.inventory)) {
+            ifOpenOverlay(interfaces.inventory, components.toplevel_target_side3)
+        }
+        ifSetEvents(components.inv_items, inv.indices, IfEvent.TgtCom, IfEvent.Target)
+        val combinedId =
+            CombinedId(components.inv_items.interfaceId, components.inv_items.component)
+        val message =
+            IfButtonT(combinedId, selectedSlot, selected.id, combinedId, targetSlot, target.id)
+        captureClient.queue(ifButtonTHandler, message)
+    }
+
+    public fun Player.resumePauseButton(component: ComponentType, sub: Int = -1) {
+        val combinedId = CombinedId(component.interfaceId, component.component)
+        val message = ResumePauseButton(combinedId, sub)
+        captureClient.queue(resumePauseButtonHandler, message)
+    }
+
     public fun Player.opNpc1(npc: Npc, controlKey: Boolean = false) {
         val message = OpNpc(npc.slotId, controlKey, op = 1)
         captureClient.queue(opNpcHandler, message)
@@ -477,6 +608,11 @@ constructor(
     public fun Player.resumeCountDialog(count: Int) {
         val message = ResumePCountDialog(count)
         captureClient.queue(resumePCountDialog, message)
+    }
+
+    public fun Player.resumeStringDialog(text: String) {
+        val message = ResumePStringDialog(text)
+        captureClient.queue(resumePStringDialog, message)
     }
 
     public fun Player.moveGameClick(dest: CoordGrid, keyCombination: Int = 0) {
@@ -927,6 +1063,7 @@ constructor(
             bind(DbTableTypeList::class.java).toInstance(cacheTypes.dbTables)
             bind(EnumTypeList::class.java).toInstance(cacheTypes.enums)
             bind(HuntModeTypeList::class.java).toInstance(cacheTypes.hunt)
+            bind(IdentKitTypeList::class.java).toInstance(cacheTypes.identKits)
             bind(FontMetricsTypeList::class.java).toInstance(cacheTypes.fonts)
             bind(InterfaceTypeList::class.java).toInstance(cacheTypes.interfaces)
             bind(InvTypeList::class.java).toInstance(cacheTypes.invs)
@@ -944,6 +1081,9 @@ constructor(
 
             bind(CheatCommandMap::class.java).`in`(Scopes.SINGLETON)
             bind(EngineQueueCache::class.java).`in`(Scopes.SINGLETON)
+
+            Multibinder.newSetBinder(binder(), NpcDropTableProvider::class.java)
+            bind(NpcDropTables::class.java).`in`(Scopes.SINGLETON)
 
             Multibinder.newSetBinder(binder(), InvisibleLevelMod::class.java)
             bind(InvisibleLevels::class.java).`in`(Scopes.SINGLETON)

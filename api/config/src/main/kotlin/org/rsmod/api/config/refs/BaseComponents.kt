@@ -65,6 +65,17 @@ object BaseComponents : ComponentReferences() {
 
     val chatmenu_pbutton = find("chatmenu:options", 2354058583546775614)
 
+    val skillmulti_a = find("skillmulti:a")
+    val skillmulti_b = find("skillmulti:b")
+    val skillmulti_c = find("skillmulti:c")
+    val skillmulti_d = find("skillmulti:d")
+    val skillmulti_e = find("skillmulti:e")
+    val skillmulti_f = find("skillmulti:f")
+    val skillmulti_g = find("skillmulti:g")
+    val skillmulti_h = find("skillmulti:h")
+    val skillmulti_i = find("skillmulti:i")
+    val skillmulti_j = find("skillmulti:j")
+
     val messagebox_text = find("messagebox:text", 4817549332312421939)
     val messagebox_pbutton = find("messagebox:continue", 1367557556890583596)
 

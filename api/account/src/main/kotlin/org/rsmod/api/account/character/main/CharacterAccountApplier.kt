@@ -4,12 +4,15 @@ import jakarta.inject.Inject
 import java.time.LocalDateTime
 import org.rsmod.api.account.character.CharacterDataStage
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.player.FriendChatSettings
 import org.rsmod.game.type.mod.ModLevelTypeList
+import org.rsmod.game.type.varp.VarpLifetime
+import org.rsmod.game.type.varp.VarpTypeList
 import org.rsmod.map.CoordGrid
 
 public class CharacterAccountApplier
 @Inject
-constructor(private val modLevelTypes: ModLevelTypeList) :
+constructor(private val modLevelTypes: ModLevelTypeList, private val varpTypes: VarpTypeList) :
     CharacterDataStage.Applier<CharacterAccountData> {
     override fun apply(player: Player, data: CharacterAccountData) {
         player.accountId = data.accountId
@@ -27,15 +30,41 @@ constructor(private val modLevelTypes: ModLevelTypeList) :
 
         val device = data.knownDevice
         player.lastKnownDevice = device
-        player.members = data.members
         player.username = data.loginName
         player.displayName = data.displayName ?: ""
         player.coords = CoordGrid(data.coordX, data.coordZ, data.coordLevel)
         player.runEnergy = data.runEnergy
         player.xpRate = data.xpRate
         player.lastLogin = LocalDateTime.now()
-        player.vars.backing.putAll(data.varps)
+        // Only restore varps that are still persistent. Saves are keyed by varp id, so a
+        // server-only
+        // varp that was renumbered (or made temporary) would otherwise load a stale value into
+        // whatever varp now owns that id.
+        for ((id, value) in data.varps) {
+            if (varpTypes[id]?.scope == VarpLifetime.Perm) {
+                player.vars.backing[id] = value
+            }
+        }
         player.assignModLevel(data.modLevel)
+        data.appearance?.let { player.assignAppearance(it) }
+        player.friendList.clear()
+        player.friendList.addAll(data.friends)
+        player.ignoreList.clear()
+        player.ignoreList.addAll(data.ignores)
+        player.friendChatRanks.clear()
+        player.friendChatRanks.putAll(data.friendChatRanks)
+        player.friendChat = data.friendChat?.toSettings() ?: FriendChatSettings.DEFAULT
+    }
+
+    private fun Player.assignAppearance(data: CharacterAppearanceData) {
+        appearance.bodyType = data.bodyType
+        appearance.pronoun = data.pronoun
+        for ((index, kit) in data.identKit.withIndex()) {
+            appearance.setIdentKit(index, kit)
+        }
+        for ((index, colour) in data.colours.withIndex()) {
+            appearance.setColour(index, colour)
+        }
     }
 
     private fun Player.assignModLevel(modLevelName: String?) {

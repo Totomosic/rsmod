@@ -27,6 +27,7 @@ public object Cinematic {
     private var Player.hideHud by boolVarBit(varbits.gravestone_tli_hide)
     private var Player.acceptAid by boolVarBit(varbits.option_acceptaid)
     private var Player.acceptAidRestore by boolVarBit(varbits.accept_aid_restore)
+    private val Player.xpDropsEnabled by boolVarBit(varbits.xpdrops_enabled)
 
     public fun setCameraMode(player: Player, mode: CameraMode) {
         player.camMode = mode
@@ -154,12 +155,15 @@ public object Cinematic {
     }
 
     public fun openTopLevelTabs(player: Player, eventBus: EventBus) {
-        player.ifOpenSub(
-            interfaces.xp_drops,
-            components.toplevel_target_xp_drops,
-            IfSubType.Overlay,
-            eventBus,
-        )
+        // The xp drops overlay is only open while the player has xp drops enabled (orb toggle).
+        if (player.xpDropsEnabled) {
+            player.ifOpenSub(
+                interfaces.xp_drops,
+                components.toplevel_target_xp_drops,
+                IfSubType.Overlay,
+                eventBus,
+            )
+        }
 
         player.ifOpenSub(
             interfaces.combat_interface,

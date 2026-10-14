@@ -15,7 +15,6 @@ internal object StandardOverlays {
             ),
             GameframeOverlay(interfaces.pm_chat, components.toplevel_target_pm_container),
             GameframeOverlay(interfaces.hpbar_hud, components.toplevel_target_hpbar_hud),
-            GameframeOverlay(interfaces.pvp_icons, components.toplevel_target_pvp_icons),
             GameframeOverlay(interfaces.orbs, components.toplevel_target_orbs),
             GameframeOverlay(interfaces.xp_drops, components.toplevel_target_xp_drops),
             GameframeOverlay(interfaces.popout, components.toplevel_target_popout),

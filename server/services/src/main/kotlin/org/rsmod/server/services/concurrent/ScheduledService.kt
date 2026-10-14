@@ -17,8 +17,8 @@ import org.rsmod.server.services.Service
  *
  * The [run] function is expected to include cooperative suspension points (e.g. `delay(...)`) to
  * avoid tight loops and to yield control appropriately. If an uncaught exception occurs during
- * [run], the error will be surfaced by the [org.rsmod.server.services.ServiceManager], triggering
- * application shutdown and propagating the error to the caller.
+ * [run], the error will be surfaced by the [org.rsmod.server.services.ServiceManager],
+ * triggering application shutdown and propagating the error to the caller.
  *
  * **Important:** [ScheduledService] is designed for single-threaded use. The [run] method is
  * invoked exactly once, on a coroutine bound to the thread returned by [createExecutor]. If your

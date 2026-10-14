@@ -6,6 +6,7 @@ typealias setting_components = SettingComponents
 
 object SettingComponents : ComponentReferences() {
     val runbutton_orb = find("orbs:runbutton")
+    val settings_close = find("settings:close")
     val runmode = find("settings_side:runmode")
 
     val settings_tab = find("settings_side:settings_tab")

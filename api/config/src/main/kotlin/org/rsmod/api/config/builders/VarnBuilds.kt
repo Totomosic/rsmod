@@ -10,5 +10,7 @@ internal object VarnBuilds : VarnBuilder() {
         build("attacking_player")
         build("lastattack")
         build("flat_armour")
+        build("freeze_end")
+        build("freeze_immunity_end")
     }
 }

@@ -18,8 +18,9 @@ import kotlin.random.Random
 import org.junit.jupiter.api.Test
 
 /**
- * This test ensures that the framework exclusively uses its own [org.rsmod.api.random.GameRandom]
- * implementation rather than the standard library's [kotlin.random.Random] or [java.util.Random].
+ * This test ensures that the framework exclusively uses its own
+ * [org.rsmod.api.random.GameRandom] implementation rather than the standard library's
+ * [kotlin.random.Random] or [java.util.Random].
  *
  * The custom implementation is particularly useful in testing environments, where deterministic
  * random number generation is necessary for consistent and thorough testing.

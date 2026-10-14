@@ -133,7 +133,12 @@ constructor(
                         c.muted_until,
                         c.banned_until,
                         c.run_energy,
-                        c.xp_rate_in_hundreds
+                        c.xp_rate_in_hundreds,
+                        c.appearance,
+                        c.friends,
+                        c.ignores,
+                        c.friend_chat,
+                        c.friend_chat_ranks
                     FROM accounts a
                     JOIN characters c ON c.account_id = a.id
                     WHERE c.realm_id = ?
@@ -171,7 +176,28 @@ constructor(
                     val bannedUntil = resultSet.getLocalDateTime("banned_until")
                     val runEnergy = resultSet.getInt("run_energy")
                     val xpRateInHundreds = resultSet.getInt("xp_rate_in_hundreds")
+                    val appearanceText = resultSet.getString("appearance")
                     val varps = objectMapper.readReifiedValue<Map<Int, Int>>(varpsText)
+                    val friends =
+                        resultSet.getString("friends")?.let {
+                            objectMapper.readReifiedValue<List<String>>(it)
+                        } ?: emptyList()
+                    val ignores =
+                        resultSet.getString("ignores")?.let {
+                            objectMapper.readReifiedValue<List<String>>(it)
+                        } ?: emptyList()
+                    val friendChat =
+                        resultSet.getString("friend_chat")?.let {
+                            objectMapper.readReifiedValue<CharacterFriendChatData>(it)
+                        }
+                    val friendChatRanks =
+                        resultSet.getString("friend_chat_ranks")?.let {
+                            objectMapper.readReifiedValue<Map<String, Int>>(it)
+                        } ?: emptyMap()
+                    val appearance =
+                        appearanceText?.let {
+                            objectMapper.readReifiedValue<CharacterAppearanceData>(it)
+                        }
                     val characterData =
                         CharacterAccountData(
                             realm = realmId,
@@ -199,6 +225,11 @@ constructor(
                             bannedUntil = bannedUntil,
                             runEnergy = runEnergy,
                             xpRate = xpRateInHundreds / 100.0,
+                            appearance = appearance,
+                            friends = friends,
+                            ignores = ignores,
+                            friendChat = friendChat,
+                            friendChatRanks = friendChatRanks,
                         )
                     val metadataList = CharacterMetadataList(characterData, mutableListOf())
                     metadataList.add(applier, characterData)
@@ -221,7 +252,8 @@ constructor(
                 """
                     UPDATE characters
                     SET x = ?, z = ?, level = ?, varps = ?, last_login = ?, run_energy = ?,
-                        xp_rate_in_hundreds = ?, last_logout = CURRENT_TIMESTAMP
+                        xp_rate_in_hundreds = ?, appearance = ?, friends = ?, ignores = ?,
+                        friend_chat = ?, friend_chat_ranks = ?, last_logout = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """
                     .trimIndent()
@@ -238,7 +270,13 @@ constructor(
             it.setSqliteTimestamp(5, player.lastLogin)
             it.setInt(6, player.runEnergy)
             it.setInt(7, (player.xpRate * 100).roundToInt())
-            it.setInt(8, characterId)
+            it.setString(8, objectMapper.writeValueAsString(player.appearanceData()))
+            it.setString(9, objectMapper.writeValueAsString(player.friendList.toList()))
+            it.setString(10, objectMapper.writeValueAsString(player.ignoreList.toList()))
+            val friendChat = CharacterFriendChatData.from(player.friendChat)
+            it.setString(11, objectMapper.writeValueAsString(friendChat))
+            it.setString(12, objectMapper.writeValueAsString(player.friendChatRanks.toMap()))
+            it.setInt(13, characterId)
             it.executeUpdate()
         }
 
@@ -260,4 +298,12 @@ constructor(
             it.executeUpdate()
         }
     }
+
+    private fun Player.appearanceData(): CharacterAppearanceData =
+        CharacterAppearanceData(
+            bodyType = appearance.bodyType,
+            pronoun = appearance.pronoun,
+            identKit = appearance.identKitSnapshot().map(Short::toInt),
+            colours = appearance.coloursSnapshot().map { it.toInt() and 0xFF },
+        )
 }

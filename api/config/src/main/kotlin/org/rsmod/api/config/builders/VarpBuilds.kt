@@ -28,6 +28,10 @@ internal object VarpBuilds : VarpBuilder() {
         build("lastcombat") { temporary = true }
         build("lastcombat_pvp") { temporary = true }
         build("aggressive_npc") { temporary = true }
+        build("freeze_end") { temporary = true }
+        build("freeze_immunity_end") { temporary = true }
+        build("freeze_source") { temporary = true }
+        build("protect_prayers_disabled_end") { temporary = true }
 
         build("temp_restore_65527")
         build("generic_temp_coords_65529") { temporary = true }

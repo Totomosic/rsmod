@@ -60,6 +60,16 @@ public fun ScriptContext.onOpHeld5(
 ): Unit = onProtectedEvent(type.id, action)
 
 /* Standard content op functions */
+/**
+ * Registers a script for sub-ops picked from any held op's right-click submenu on [type] (the obj's
+ * `isubop` entries, e.g. "Rub" → "Edgeville"). Without one, a sub-op falls back to its parent op's
+ * script.
+ */
+public fun ScriptContext.onOpHeldSubOp(
+    type: ObjType,
+    action: suspend ProtectedAccess.(HeldObjEvents.SubOp) -> Unit,
+): Unit = onProtectedEvent(type.id, action)
+
 public fun ScriptContext.onOpHeld1(
     content: ContentGroupType,
     action: suspend ProtectedAccess.(HeldContentEvents.Op1) -> Unit,

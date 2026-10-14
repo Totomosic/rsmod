@@ -76,9 +76,8 @@ class Bartender @Inject constructor(private val objRepo: ObjRepository) : Plugin
         )
     }
 
-    private suspend fun Dialogue.nothing() {
-        chatPlayer(neutral, "Nothing, I'm fine.")
-    }
+    // The conversation ends without the player repeating the option. (OSRS Wiki transcript)
+    private fun nothing() {}
 
     private fun ProtectedAccess.shouldPathToCounter(): Boolean =
         isWithinArea(CoordGrid(0, 50, 50, 28, 36), CoordGrid(0, 50, 50, 30, 42)) ||

@@ -2,6 +2,8 @@ package org.rsmod.content.interfaces.prayer.tab.scripts
 
 import jakarta.inject.Inject
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.player.isProtectionPrayer
+import org.rsmod.api.player.isProtectionPrayerDisabled
 import org.rsmod.api.player.output.ClientScripts
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.soundSynth
@@ -16,6 +18,7 @@ import org.rsmod.content.interfaces.prayer.tab.Prayer
 import org.rsmod.content.interfaces.prayer.tab.PrayerRepository
 import org.rsmod.content.interfaces.prayer.tab.configs.prayer_queues
 import org.rsmod.content.interfaces.prayer.tab.configs.prayer_sounds
+import org.rsmod.content.interfaces.prayer.tab.util.PROTECTION_PRAYERS_DISABLED_MESSAGE
 import org.rsmod.content.interfaces.prayer.tab.util.disablePrayerDrain
 import org.rsmod.content.interfaces.prayer.tab.util.disablePrayerStatRegen
 import org.rsmod.content.interfaces.prayer.tab.util.enablePrayerDrain
@@ -73,6 +76,11 @@ private constructor(
             val message = player.failedRequirementMessage(prayer)
             player.resyncVar(prayer.enabled)
             mesbox(message)
+            return
+        }
+        if (isProtectionPrayer(prayer.enabled) && player.isProtectionPrayerDisabled()) {
+            player.resyncVar(prayer.enabled)
+            mes(PROTECTION_PRAYERS_DISABLED_MESSAGE)
             return
         }
         disableCollisions(prayer)

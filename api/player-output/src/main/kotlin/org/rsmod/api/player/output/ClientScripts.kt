@@ -57,6 +57,38 @@ public object ClientScripts {
         player.runClientScript(58, title, joinedChoices)
 
     /**
+     * Sets up the `skillmulti` (Make-X) chatbox interface.
+     *
+     * @param type the skillmulti type. Determines the quantity buttons and their limits.
+     * @param joinedTitleAndNames the title followed by each item name, split by the `|` character.
+     * @param maxQuantity the maximum quantity that can be selected.
+     * @param objs exactly [SKILL_MULTI_OBJ_SLOTS] obj ids, with `-1` for unused slots.
+     * @param suggestedQuantity the quantity that is initially selected.
+     */
+    public fun skillMultiSetup(
+        player: Player,
+        type: Int,
+        joinedTitleAndNames: String,
+        maxQuantity: Int,
+        objs: List<Int>,
+        suggestedQuantity: Int,
+    ) {
+        require(objs.size == SKILL_MULTI_OBJ_SLOTS) {
+            "`objs` must have exactly $SKILL_MULTI_OBJ_SLOTS elements. (size=${objs.size})"
+        }
+        val args = buildList {
+            add(type)
+            add(joinedTitleAndNames)
+            add(maxQuantity)
+            addAll(objs)
+            add(suggestedQuantity)
+        }
+        player.runClientScript(2046, args)
+    }
+
+    public const val SKILL_MULTI_OBJ_SLOTS: Int = 10
+
+    /**
      * Values for [layerMode] can be found in [org.rsmod.api.config.Constants] prefixed with
      * `meslayer_mode`. (i.e., `meslayer_mode_countdialog`)
      */
@@ -189,8 +221,8 @@ public object ClientScripts {
     }
 
     /**
-     * @param timer the overlay timer type, see [org.rsmod.api.config.Constants] for known values.
-     *   (prefixed with `overlay_timer_`)
+     * @param timer the overlay timer type, see [org.rsmod.api.config.Constants] for known
+     *   values. (prefixed with `overlay_timer_`)
      * @param isDespawnTimer `true` if the overlay represents a despawn timer as opposed to respawn
      *   timer. (i.e., hunter trap despawn vs tree respawn)
      */

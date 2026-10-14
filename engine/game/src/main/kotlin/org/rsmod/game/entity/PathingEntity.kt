@@ -284,9 +284,9 @@ public sealed class PathingEntity {
     /**
      * This function will call [faceSquare] with arguments based on the provided [loc] and its
      * dimensions ([width] and [length]). The dimensions should be the unmodified values from the
-     * [org.rsmod.game.type.loc.UnpackedLocType] of the loc. This method automatically adjusts the
-     * dimensions according to the loc's angle to ensure that the PathingEntity faces the correct
-     * angle.
+     * [org.rsmod.game.type.loc.UnpackedLocType] of the loc. This method automatically adjusts
+     * the dimensions according to the loc's angle to ensure that the PathingEntity faces the
+     * correct angle.
      *
      * @see [faceSquare]
      */

@@ -1,17 +1,25 @@
 package org.rsmod.content.generic.locs.staircase
 
+import jakarta.inject.Inject
 import org.rsmod.api.config.refs.content
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpLoc2
 import org.rsmod.api.script.onOpLoc3
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocAngle
+import org.rsmod.game.loc.LocInfo
+import org.rsmod.game.type.loc.LocTypeList
+import org.rsmod.map.CoordGrid
 import org.rsmod.map.util.Translation
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-class SpiralStaircaseScript : PluginScript() {
+class SpiralStaircaseScript
+@Inject
+constructor(private val locRepo: LocRepository, private val locTypes: LocTypeList) :
+    PluginScript() {
     override fun ScriptContext.startup() {
         onOpLoc1(content.spiralstaircase_down) { climbDown(it.loc) }
         onOpLoc1(content.spiralstaircase_up) { climbUp(it.loc) }
@@ -25,8 +33,10 @@ class SpiralStaircaseScript : PluginScript() {
             climbDown(it.loc)
         }
 
-        onOpLoc2(staircase_locs.lumbridge_spiral_bottom) { climbLumbridgeTop(it.loc) }
-        onOpLoc2(staircase_locs.lumbridge_spiral_top) { climbLumbridgeBottom(it.loc) }
+        // "Top-floor"/"Bottom-floor" only exist on the ground and top floor staircases of taller
+        // stacks (e.g. Lumbridge Castle's `spiralstairsbottom_3`/`spiralstairstop_3`).
+        onOpLoc2(content.spiralstaircase_up) { climbToTop(it.loc) }
+        onOpLoc2(content.spiralstaircase_down) { climbToBottom(it.loc) }
     }
 
     private fun ProtectedAccess.climbDown(loc: BoundLocInfo) =
@@ -71,11 +81,57 @@ class SpiralStaircaseScript : PluginScript() {
         }
     }
 
-    private fun ProtectedAccess.climbLumbridgeTop(loc: BoundLocInfo) {
-        climb(loc, loc.climbUpTranslation().copy(level = 2))
+    /** Climbs to the highest floor of the staircase stack that [loc] belongs to. */
+    private fun ProtectedAccess.climbToTop(loc: BoundLocInfo) {
+        val floors = loc.floorsInDirection(step = 1)
+        climb(loc, loc.climbUpTranslation().copy(level = floors))
     }
 
-    private fun ProtectedAccess.climbLumbridgeBottom(loc: BoundLocInfo) {
-        climb(loc, loc.climbDownTranslation().copy(level = -2))
+    /** Climbs to the lowest floor of the staircase stack that [loc] belongs to. */
+    private fun ProtectedAccess.climbToBottom(loc: BoundLocInfo) {
+        val floors = loc.floorsInDirection(step = -1)
+        climb(loc, loc.climbDownTranslation().copy(level = -floors))
     }
+
+    /**
+     * Counts how many floors the staircase stack continues in [step]'s direction from [this] loc.
+     * Staircases of a stack overlap on every floor, but their origin tile can shift by a tile
+     * between floors (e.g. Lumbridge Castle), so nearby tiles are searched too.
+     */
+    private fun BoundLocInfo.floorsInDirection(step: Int): Int {
+        var floors = 1
+        var level = coords.level + step
+        while (level in 0..3) {
+            val next = locAt(coords.copy(level = level)) ?: break
+            // The end of the stack is a staircase that only leads back the way we came.
+            if (locTypes[next.id]?.contentGroup != content.spiralstaircase_option.id) {
+                break
+            }
+            floors++
+            level += step
+        }
+        return floors
+    }
+
+    private fun locAt(coords: CoordGrid): LocInfo? =
+        STACK_OFFSETS.firstNotNullOfOrNull { (dx, dz) ->
+            locRepo.findAll(coords.translate(dx, dz)).firstOrNull {
+                locTypes[it.id]?.contentGroup in staircaseGroups
+            }
+        }
+
+    private companion object {
+        /** Tile offsets searched for the next floor's staircase, nearest first. */
+        val STACK_OFFSETS: List<Pair<Int, Int>> =
+            (-1..1)
+                .flatMap { dx -> (-1..1).map { dz -> dx to dz } }
+                .sortedBy { (dx, dz) -> dx * dx + dz * dz }
+    }
+
+    private val staircaseGroups =
+        setOf(
+            content.spiralstaircase_up.id,
+            content.spiralstaircase_down.id,
+            content.spiralstaircase_option.id,
+        )
 }

@@ -12,6 +12,7 @@ import org.rsmod.game.type.gameval.GameValNameMap
 import org.rsmod.game.type.headbar.HeadbarTypeList
 import org.rsmod.game.type.hitmark.HitmarkTypeList
 import org.rsmod.game.type.hunt.HuntModeTypeList
+import org.rsmod.game.type.idk.IdentKitTypeList
 import org.rsmod.game.type.interf.InterfaceTypeList
 import org.rsmod.game.type.inv.InvTypeList
 import org.rsmod.game.type.jingle.JingleTypeList
@@ -68,4 +69,5 @@ public data class TypeListMap(
     public val modLevels: ModLevelTypeList,
     public val clientscripts: ClientScriptTypeList,
     public val models: ModelTypeList,
+    public val identKits: IdentKitTypeList,
 )

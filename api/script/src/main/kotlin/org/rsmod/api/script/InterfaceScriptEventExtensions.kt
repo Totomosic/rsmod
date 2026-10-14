@@ -9,6 +9,7 @@ import org.rsmod.api.player.ui.IfOpenSub
 import org.rsmod.api.player.ui.IfOverlayButton
 import org.rsmod.api.player.ui.IfOverlayButtonT
 import org.rsmod.api.player.ui.IfOverlayDrag
+import org.rsmod.api.player.ui.IfOverlaySubOp
 import org.rsmod.events.EventBus
 import org.rsmod.game.type.comp.ComponentType
 import org.rsmod.game.type.interf.InterfaceType
@@ -23,6 +24,12 @@ public fun ScriptContext.onIfClose(type: InterfaceType, action: IfCloseSub.() ->
 public fun ScriptContext.onIfOverlayButton(
     button: ComponentType,
     action: IfOverlayButton.() -> Unit,
+): Unit = onEvent(button.packed, action)
+
+/** Registers a script for sub-ops (`IF_SUBOP`) selected on an _overlay_ interface component. */
+public fun ScriptContext.onIfOverlaySubOp(
+    button: ComponentType,
+    action: IfOverlaySubOp.() -> Unit,
 ): Unit = onEvent(button.packed, action)
 
 public fun ScriptContext.onIfModalButton(

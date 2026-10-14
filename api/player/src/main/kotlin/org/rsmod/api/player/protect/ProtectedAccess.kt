@@ -84,6 +84,7 @@ import org.rsmod.api.player.stat.statRestore
 import org.rsmod.api.player.stat.statRestoreAll
 import org.rsmod.api.player.stat.statSub
 import org.rsmod.api.player.stopInvTransmit
+import org.rsmod.api.player.ui.SkillMultiSelection
 import org.rsmod.api.player.ui.ifChatNpcSpecific
 import org.rsmod.api.player.ui.ifChatPlayer
 import org.rsmod.api.player.ui.ifChoice
@@ -110,6 +111,8 @@ import org.rsmod.api.player.ui.ifSetNpcHead
 import org.rsmod.api.player.ui.ifSetObj
 import org.rsmod.api.player.ui.ifSetPlayerHead
 import org.rsmod.api.player.ui.ifSetText
+import org.rsmod.api.player.ui.ifSkillMulti
+import org.rsmod.api.player.ui.skillMultiButtons
 import org.rsmod.api.player.vars.VarPlayerIntMapDelegate
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.player.vars.setActiveMoveSpeed
@@ -2854,6 +2857,54 @@ public class ProtectedAccess(
      */
     public suspend fun menu(title: String, vararg choices: String, hotkeys: Boolean = false): Int {
         return menu(title, hotkeys, choices.toList())
+    }
+
+    /**
+     * Opens the `skillmulti` (Make-X) chatbox interface, suspending until the [player] selects one
+     * of the [choices] and a quantity.
+     *
+     * @param title the title displayed above the options. (e.g., `What would you like to cook?`)
+     * @param choices the obj options to display, in order. Must contain between `1` and
+     *   [ClientScripts.SKILL_MULTI_OBJ_SLOTS] elements.
+     * @param maxQuantity the maximum quantity the player can select (e.g., the amount of raw food
+     *   in their inventory). Clamped to `1..28`.
+     * @param suggestedQuantity the quantity initially selected on the interface.
+     * @param type the skillmulti type. The default (`0`) displays the `1`, `5`, `10`, `X` and `All`
+     *   quantity buttons.
+     * @throws ProtectedAccessLostException if the player could not retain protected access after
+     *   the coroutine suspension.
+     * @throws IllegalArgumentException if [choices] is empty or has too many elements.
+     */
+    public suspend fun skillMulti(
+        title: String,
+        choices: List<ObjType>,
+        maxQuantity: Int,
+        suggestedQuantity: Int = maxQuantity,
+        type: Int = 0,
+    ): SkillMultiSelection {
+        require(choices.isNotEmpty()) { "`choices` must not be empty." }
+        require(choices.size <= ClientScripts.SKILL_MULTI_OBJ_SLOTS) {
+            "Can only have up to ${ClientScripts.SKILL_MULTI_OBJ_SLOTS} `choices`. " +
+                "(size=${choices.size})"
+        }
+        val max = maxQuantity.coerceIn(1, 28)
+        val suggested = suggestedQuantity.coerceIn(1, max)
+        val names = choices.joinToString("|") { context.objTypes[it].name }
+        val objs = List(ClientScripts.SKILL_MULTI_OBJ_SLOTS) { choices.getOrNull(it)?.id ?: -1 }
+        player.ifSkillMulti(type, "$title|$names", max, objs, suggested, context.eventBus)
+        val modal = player.ui.getModalOrNull(components.chatbox_chatmodal)
+        val input = coroutine.pause(ResumePauseButtonInput::class)
+        val index = skillMultiButtons.indexOfFirst { it.isType(input.component) }
+        if (index !in choices.indices) {
+            logger.debug {
+                "Protected-access was lost due to unexpected skillmulti component: " +
+                    "player=$player, input=$input"
+            }
+            throw ProtectedAccessLostException()
+        }
+        resumeWithModalProtectedAccess(null, modal, components.chatbox_chatmodal)
+        val quantity = input.subcomponent.coerceIn(1, max)
+        return SkillMultiSelection(choices[index], quantity)
     }
 
     /**

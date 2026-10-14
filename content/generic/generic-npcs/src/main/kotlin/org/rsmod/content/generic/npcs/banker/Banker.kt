@@ -8,6 +8,8 @@ import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.synths
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.dialogue.Dialogue
+import org.rsmod.api.player.ironman.ULTIMATE_IRONMAN_BANK_MESSAGE
+import org.rsmod.api.player.ironman.isUltimateIronman
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onApNpc1
 import org.rsmod.api.script.onApNpc3
@@ -69,6 +71,10 @@ private constructor(
     }
 
     private fun ProtectedAccess.openBank() {
+        if (player.isUltimateIronman) {
+            mes(ULTIMATE_IRONMAN_BANK_MESSAGE)
+            return
+        }
         ifOpenMainSidePair(main = interfaces.bank_main, side = interfaces.bank_side)
     }
 
@@ -208,8 +214,11 @@ private constructor(
     }
 
     private suspend fun Dialogue.buyBankSlots() {
-        // TODO(content): Check if player is ultimate ironman. If so, give dialogue and return
-        //  early.
+        if (player.isUltimateIronman) {
+            chatNpc(quiz, "Why? You don't use the bank.")
+            chatPlayer(neutral, "Oh yeah... Never mind then.")
+            return
+        }
 
         val blocks = access.vars[banker_varbits.blocks_purchased]
         val costs = spaceShop.listCosts(blocks)

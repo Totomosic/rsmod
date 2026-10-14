@@ -11,4 +11,6 @@ object BaseVarns : VarnReferences() {
     val attacking_player = find("attacking_player")
     val lastattack = find("lastattack")
     val flat_armour = find("flat_armour")
+    val freeze_end = find("freeze_end")
+    val freeze_immunity_end = find("freeze_immunity_end")
 }

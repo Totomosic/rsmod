@@ -57,6 +57,48 @@ private constructor(
     }
 
     /**
+     * Handles sub-op [subop] (1-based) of held [op] on the obj in [invSlot]. A script registered
+     * for [HeldObjEvents.SubOp] on the obj type receives it; otherwise it falls back to the parent
+     * [op], as if the player had clicked the op itself.
+     */
+    public suspend fun interactSubOp(
+        access: ProtectedAccess,
+        inventory: Inventory,
+        invSlot: Int,
+        op: HeldOp,
+        subop: Int,
+    ) {
+        val obj = inventory[invSlot] ?: return resendSlot(inventory, 0)
+        val type = objTypes[obj]
+        if (!objectVerify(access.player, inventory, obj, type)) {
+            return
+        } else if (!hasOp(inventory, obj, type, op)) {
+            return
+        }
+        val subOps = type.isubops(op)
+        if (subOps == null || subop !in 1..subOps.size || subOps[subop - 1].isBlank()) {
+            logger.debug { "OpHeld invalid subop blocked: op=$op, subop=$subop, type=$type" }
+            resendSlot(inventory, 0)
+            return
+        }
+        val script = eventBus.suspend[HeldObjEvents.SubOp::class.java, type.id]
+        if (script != null) {
+            script(access, HeldObjEvents.SubOp(invSlot, obj, type, inventory, op, subop))
+            return
+        }
+        interact(access, inventory, invSlot, obj, type, op)
+    }
+
+    private fun UnpackedObjType.isubops(op: HeldOp): Array<String>? =
+        when (op) {
+            HeldOp.Op1 -> isubop1
+            HeldOp.Op2 -> isubop2
+            HeldOp.Op3 -> isubop3
+            HeldOp.Op4 -> isubop4
+            HeldOp.Op5 -> isubop5
+        }
+
+    /**
      * Directly drops the obj in [invSlot], bypassing the normal `Op5` scripted logic.
      *
      * Use this when an obj requires custom or additional logic (before dropping) that isn't part of

@@ -6,6 +6,7 @@ import org.rsmod.events.KeyedEvent
 import org.rsmod.events.SuspendEvent
 import org.rsmod.events.UnboundEvent
 import org.rsmod.game.entity.Player
+import org.rsmod.game.interact.HeldOp
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.type.droptrig.DropTriggerType
@@ -118,6 +119,19 @@ public sealed class HeldObjEvents(id: Number) : OpEvent(id.toLong()) {
         public val obj: InvObj,
         public val type: UnpackedObjType,
         public val inventory: Inventory,
+    ) : HeldObjEvents(obj.id)
+
+    /**
+     * A sub-op picked from the right-click submenu of held [op] (the obj's `isubop` entries), e.g.
+     * "Rub" → "Edgeville". [subop] is 1-based: `1` is the first entry of the submenu.
+     */
+    public class SubOp(
+        public val slot: Int,
+        public val obj: InvObj,
+        public val type: UnpackedObjType,
+        public val inventory: Inventory,
+        public val op: HeldOp,
+        public val subop: Int,
     ) : HeldObjEvents(obj.id)
 }
 

@@ -5,14 +5,18 @@ import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.headbars
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.queues
+import org.rsmod.api.config.refs.spotanims
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.synths
+import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.headbar.InternalPlayerHeadbars
 import org.rsmod.api.player.lefthand
 import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.stat.statBase
 import org.rsmod.api.player.torso
 import org.rsmod.api.random.GameRandom
 import org.rsmod.game.headbar.Headbar
@@ -33,13 +37,15 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
         }
         preventLogout("You can't log out until 10 seconds after the end of combat.", 16)
 
-        // TODO(combat): Process degradation, ring of recoil, retribution, etc.
+        // TODO(combat): Process degradation, ring of recoil, etc. Retribution is handled on death.
 
         val damage = min(player.hitpoints, hit.damage)
         if (damage > 0) {
             statSub(stats.hitpoints, constant = damage, percent = 0)
         }
 
+        applySmite(hit, damage)
+        activateRedemption()
         playDefendSound(hit, random)
 
         val queueDeath = player.hitpoints == 0 && queues.death !in player.queueList
@@ -51,6 +57,45 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
 
         val headbar = hit.createHeadbar(player.hitpoints, player.baseHitpointsLvl)
         player.showHeadbar(headbar)
+    }
+
+    /**
+     * [Smite](https://oldschool.runescape.wiki/w/Smite): when the attacking player has Smite
+     * active, 25% of the damage done (rounded down) is drained from the target's Prayer points.
+     */
+    private fun ProtectedAccess.applySmite(hit: Hit, damage: Int) {
+        if (!hit.isFromPlayer || damage < SMITE_DIVISOR) {
+            return
+        }
+        val source = findHitPlayerSource(hit) ?: return
+        if (source.vars[varbits.smite] == 0) {
+            return
+        }
+        val drain = min(player.stat(stats.prayer), damage / SMITE_DIVISOR)
+        if (drain > 0) {
+            statSub(stats.prayer, constant = drain, percent = 0)
+        }
+    }
+
+    private const val SMITE_DIVISOR = 4
+
+    /**
+     * [Redemption](https://oldschool.runescape.wiki/w/Redemption): when hit to (or while below) 10%
+     * of base Hitpoints, all Prayer points are drained and the player heals a quarter of their base
+     * Prayer level.
+     */
+    private fun ProtectedAccess.activateRedemption() {
+        if (player.vars[varbits.redemption] == 0) {
+            return
+        }
+        val hitpoints = player.hitpoints
+        if (hitpoints <= 0 || hitpoints * 10 >= player.baseHitpointsLvl) {
+            return
+        }
+        val prayerBase = player.statBase(stats.prayer)
+        statSub(stats.prayer, constant = player.stat(stats.prayer), percent = 0)
+        statHeal(stats.hitpoints, constant = prayerBase / 4, percent = 0)
+        spotanim(spotanims.redemption)
     }
 
     private fun Hit.isValid(access: ProtectedAccess): Boolean {

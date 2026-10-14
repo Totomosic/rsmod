@@ -5,6 +5,8 @@ import org.rsmod.api.config.Constants
 import org.rsmod.api.config.refs.seqs
 import org.rsmod.api.config.refs.synths
 import org.rsmod.api.invtx.invAdd
+import org.rsmod.api.player.ironman.IRONMAN_TAKE_MESSAGE
+import org.rsmod.api.player.ironman.isIronman
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.repo.obj.ObjRepository
@@ -22,6 +24,10 @@ public class ObjTakePlugin @Inject constructor(private val repo: ObjRepository) 
     }
 
     private suspend fun ProtectedAccess.triggerTake(obj: Obj) {
+        if (player.isIronman && obj.nullableOwnerId != null && !obj.isOriginalOwner(player)) {
+            player.mes(IRONMAN_TAKE_MESSAGE)
+            return
+        }
         if (!player.hasInvSpace(obj)) {
             player.mes(Constants.dm_take_invspace)
             return

@@ -21,10 +21,8 @@ import org.rsmod.plugin.scripts.ScriptContext
 
 class SettingsSideScript
 @Inject
-constructor(
-    private val eventBus: EventBus,
-    private val protectedAccess: ProtectedAccessLauncher,
-) : PluginScript() {
+constructor(private val protectedAccess: ProtectedAccessLauncher, private val eventBus: EventBus) :
+    PluginScript() {
     private var Player.panel by enumVarBit<Panel>(setting_varbits.panel_tab)
 
     override fun ScriptContext.startup() {
@@ -35,6 +33,7 @@ constructor(
         onIfOverlayButton(setting_components.display_tab) { player.panel = Panel.Display }
 
         onIfOverlayButton(setting_components.settings_open) { player.selectAllSettings() }
+        // Op1 is the "Close" button; op2 is bound client-side to the escape key.
         onIfOverlayButton(setting_components.settings_close) {
             player.ifCloseOverlay(interfaces.settings, eventBus)
         }

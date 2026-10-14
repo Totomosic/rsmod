@@ -54,6 +54,24 @@ public data class IfOverlayButton(
     override val id: Long = component.packed.toLong()
 }
 
+/**
+ * A sub-op selected from an _overlay_ component's right-click submenu (the client's `IF_SUBOP`
+ * packet), e.g. "Rub" → "Edgeville" on an inventory amulet of glory.
+ *
+ * [op] is the parent interface op the submenu hangs off, encoded the same way as an
+ * [IfOverlayButton.op], and [subop] is the 1-based sub-op id (the obj's `isubop` index + 1).
+ */
+public data class IfOverlaySubOp(
+    val player: Player,
+    val component: ComponentType,
+    val comsub: Int,
+    val obj: UnpackedObjType?,
+    val op: IfButtonOp,
+    val subop: Int,
+) : KeyedEvent {
+    override val id: Long = component.packed.toLong()
+}
+
 public class IfModalButtonT(
     public val selectedSlot: Int,
     public val selectedObj: UnpackedObjType?,

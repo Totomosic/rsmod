@@ -157,6 +157,7 @@ object BaseVarBits : VarBitReferences() {
     val music_curr_clocks = find("music_curr_clocks")
     val music_curr_duration = find("music_curr_duration")
     val gameframe_toplevel = find("gameframe_toplevel")
+    val xpdrops_enabled = find("xpdrops_enabled")
     val improved_stamina_passive = find("improved_stamina_passive")
     val prayer_drain_counter = find("prayer_drain_counter")
     val prayer_drain_resistance = find("prayer_drain_resistance")
@@ -178,4 +179,10 @@ object BaseVarBits : VarBitReferences() {
     val giant_pouch_storage_count = find("giant_pouch_storage_count")
     val colossal_pouch_storage_type = find("colossal_pouch_storage_type")
     val colossal_pouch_storage_count = find("colossal_pouch_storage_count")
+
+    val ironman = find("ironman")
+    val ironman_hardcore_dead = find("ironman_hardcore_dead")
+    val ironman_downgradedate = find("ironman_downgradedate")
+    val ironman_downgradetype = find("ironman_downgradetype")
+    val ironman_downgradepermitted = find("ironman_downgradepermitted")
 }

@@ -61,6 +61,10 @@ constructor(
             setBankIfEvents()
             setBankWornBonuses(wornBonuses, weaponSpeeds)
             ifSetText(bank_components.capacity_text, bankCapacity.toString())
+            // The client's `bankmain_build` redraws the title on every bank update; its text is
+            // rebranded in the client cache (see `ClientTextOverrides`). Set it here as well so the
+            // title is never left blank before (or without) the first rebuild.
+            ifSetText(bank_components.title, bank_constants.title)
             tooltip(
                 this,
                 "Members' capacity: ${bank_constants.default_capacity}<br>" +

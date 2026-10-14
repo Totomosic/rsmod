@@ -14,6 +14,7 @@ object BankInterfaces : InterfaceReferences() {
 }
 
 object BankComponents : ComponentReferences() {
+    val title = find("bankmain:title")
     val tutorial_button = find("bankmain:bank_tut", 7135446288139269005)
     val capacity_container = find("bankmain:capacity_layer", 5691092119508665688)
     val capacity_text = find("bankmain:capacity", 71329117100551008)

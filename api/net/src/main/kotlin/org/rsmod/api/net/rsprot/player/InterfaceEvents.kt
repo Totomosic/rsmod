@@ -13,7 +13,8 @@ internal object InterfaceEvents {
     ): Boolean {
         val verifyStaticEvents = comsub == -1
         return if (verifyStaticEvents) {
-            component.hasEvent(event)
+            // Static components may also have events enabled at runtime with `if_setevents`.
+            component.hasEvent(event) || ui.hasEvent(component, 0, event)
         } else {
             ui.hasEvent(component, comsub, event)
         }

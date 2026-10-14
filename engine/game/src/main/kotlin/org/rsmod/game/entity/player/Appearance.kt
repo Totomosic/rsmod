@@ -94,7 +94,7 @@ public class Appearance {
     }
 
     public fun setIdentKit(index: Int, identKit: Int) {
-        require(identKit in 0..65535) { "identKit must be in range [0..65535]. ($identKit)" }
+        require(identKit in -1..65535) { "identKit must be in range [-1..65535]. ($identKit)" }
         this.identKit[index] = identKit.toShort()
         this.rebuild = true
     }
