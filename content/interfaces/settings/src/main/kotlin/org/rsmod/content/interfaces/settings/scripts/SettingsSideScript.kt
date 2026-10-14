@@ -5,6 +5,7 @@ import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
+import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.player.vars.enumVarBit
 import org.rsmod.api.script.onIfOpen
@@ -12,13 +13,18 @@ import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.utils.vars.VarEnumDelegate
 import org.rsmod.content.interfaces.settings.configs.setting_components
 import org.rsmod.content.interfaces.settings.configs.setting_varbits
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.type.interf.IfEvent
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-class SettingsSideScript @Inject constructor(private val protectedAccess: ProtectedAccessLauncher) :
-    PluginScript() {
+class SettingsSideScript
+@Inject
+constructor(
+    private val eventBus: EventBus,
+    private val protectedAccess: ProtectedAccessLauncher,
+) : PluginScript() {
     private var Player.panel by enumVarBit<Panel>(setting_varbits.panel_tab)
 
     override fun ScriptContext.startup() {
@@ -29,6 +35,9 @@ class SettingsSideScript @Inject constructor(private val protectedAccess: Protec
         onIfOverlayButton(setting_components.display_tab) { player.panel = Panel.Display }
 
         onIfOverlayButton(setting_components.settings_open) { player.selectAllSettings() }
+        onIfOverlayButton(setting_components.settings_close) {
+            player.ifCloseOverlay(interfaces.settings, eventBus)
+        }
     }
 
     private fun Player.updateIfEvents() {

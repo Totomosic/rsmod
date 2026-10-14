@@ -12,6 +12,7 @@ object SettingComponents : ComponentReferences() {
     val audio_tab = find("settings_side:audio_tab")
     val display_tab = find("settings_side:display_tab")
     val settings_open = find("settings_side:settings_open")
+    val settings_close = find("settings:close")
 
     val skull_prevention = find("settings_side:skull_prevention")
     val attack_priority_player_buttons = find("settings_side:attack_priority_player_buttons")
