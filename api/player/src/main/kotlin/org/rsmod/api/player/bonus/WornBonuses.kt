@@ -11,6 +11,7 @@ import org.rsmod.api.player.hat
 import org.rsmod.api.player.legs
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.torso
+import org.rsmod.api.player.worn.Blowpipe
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
 import org.rsmod.game.type.obj.ObjTypeList
@@ -155,7 +156,10 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
             slayerMeleeOnly = type.param(params.bonus_slayer_meleeonly)
         }
 
-        // TODO: Apply toxic blowpipe dart bonuses.
+        if (Blowpipe.isLoaded(player.righthand)) {
+            val dart = Blowpipe.dartType(player.righthand)
+            if (dart != null) rangedStr += objTypes[dart].param(params.ranged_strength)
+        }
 
         if (EquipmentChecks.isTumekensShadow(player.righthand)) {
             // TODO: 4.0 while in tombs of amascut. This is purely for the visual bonus, the actual

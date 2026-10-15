@@ -45,6 +45,33 @@ constructor(
     ): Boolean = RangedAmmunition.attemptAmmoUsage(player, weapon, ammo)
 
     /**
+     * Applies Ava's recovery and ordinary ground drops to ammunition stored inside a weapon.
+     * Returns `true` when the caller should remove the ammunition from its weapon's storage.
+     */
+    public fun useStoredAmmo(
+        player: Player,
+        ammoType: UnpackedObjType,
+        dropCoord: CoordGrid,
+        dropDelay: Int,
+    ): Boolean {
+        if (RangedAmmunition.conserveAmmo(player, objTypes, random)) return false
+        if (random.randomBoolean(RangedAmmunition.DEFAULT_AMMO_DROP_RATE)) {
+            RangedAmmunition.attemptAmmoDrop(
+                player = player,
+                delay = dropDelay,
+                ammoType = ammoType,
+                ammoCount = 1,
+                dropCoord = dropCoord,
+                dropDuration = RangedAmmunition.DEFAULT_AMMO_DROP_DURATION,
+                collision = collision,
+                worldQueues = worldQueues,
+                objRepo = objRepo,
+            )
+        }
+        return true
+    }
+
+    /**
      * Consumes ammunition from the player's `quiver` slot, deducting it and handling possible ammo
      * drops.
      *
