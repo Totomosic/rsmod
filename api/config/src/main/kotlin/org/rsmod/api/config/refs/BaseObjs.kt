@@ -423,7 +423,7 @@ object BaseObjs : ObjReferences() {
     val fire_rune = find("firerune")
     val mind_rune = find("mindrune")
     val chaos_rune = find("chaosrune")
-    val death_rune = find("chaosrune")
+    val death_rune = find("deathrune")
     val blood_rune = find("bloodrune")
     val nature_rune = find("naturerune")
     val law_rune = find("lawrune")
