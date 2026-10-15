@@ -5,8 +5,11 @@ import org.rsmod.api.config.constants
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.repo.region.RegionRepository
+import org.rsmod.content.areas.dungeons.nylocas.BloatExit
+import org.rsmod.content.areas.dungeons.nylocas.BloatExitRoom
 import org.rsmod.content.areas.dungeons.nylocas.NylocasRoom
 import org.rsmod.game.cheat.Cheat
+import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
@@ -16,6 +19,7 @@ class NylocasDevelopmentCommand
 constructor(
     private val protectedAccess: ProtectedAccessLauncher,
     private val regionRepo: RegionRepository,
+    private val bloatExit: BloatExit,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onCommand(
@@ -28,15 +32,24 @@ constructor(
             "Teleport onto the bridge outside Nylocas",
             { teleport(this, NylocasRoom.bridge) },
         )
+        onCommand(
+            "bloatexit",
+            "Teleport to the Bloat exit before the Nylocas bridge",
+            { teleport(this, BloatExitRoom.doorstep, bloatExit::createRoom) },
+        )
     }
 
-    private fun teleport(cheat: Cheat, destination: CoordGrid) {
+    private fun teleport(
+        cheat: Cheat,
+        destination: CoordGrid,
+        createRoom: () -> Region? = { regionRepo.add(NylocasRoom.template) },
+    ) {
         val player = cheat.player
         val launched =
             protectedAccess.launch(player) {
-                val region = regionRepo.add(NylocasRoom.template)
+                val region = createRoom()
                 if (region == null) {
-                    mes("Could not create the Nylocas room. Try again in a few seconds.")
+                    mes("Could not create the development room. Try again in a few seconds.")
                     return@launch
                 }
                 telejump(region.normal[destination])

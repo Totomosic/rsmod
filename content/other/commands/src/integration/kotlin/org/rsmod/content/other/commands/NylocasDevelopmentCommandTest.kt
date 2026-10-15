@@ -36,6 +36,14 @@ class NylocasDevelopmentCommandTest {
             assertEquals(CoordGrid(3295, 4248, 0), deps.regions.normalizeCoords(player.coords))
             assertEquals(0, deps.collision[player.coords] and CollisionFlag.BLOCK_WALK)
 
+            deps.handler.handle(player, ClientCheat("bloatexit"))
+            advance()
+            assertNotNull(deps.regions[player.coords])
+            assertEquals(CoordGrid(3322, 4447, 0), deps.regions.normalizeCoords(player.coords))
+            val blocked =
+                CollisionFlag.BLOCK_WALK or CollisionFlag.LOC or CollisionFlag.GROUND_DECOR
+            assertEquals(0, deps.collision[player.coords] and blocked)
+
             // Nyloer's three incoming lanes and ToB QoL's entry line must resolve to source
             // tiles, including tiles away from the player's current chunk.
             val sourceTiles =
@@ -67,7 +75,7 @@ class NylocasDevelopmentCommandTest {
         runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.player]
             val original = player.coords
-            for (command in listOf("nylocas", "nylocasbridge")) {
+            for (command in listOf("nylocas", "nylocasbridge", "bloatexit")) {
                 deps.handler.handle(player, ClientCheat(command))
                 advance()
 
