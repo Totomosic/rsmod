@@ -68,6 +68,9 @@ constructor(
     fun isStarted(player: Player, region: Region): Boolean =
         raids[region.uid]?.members?.contains(player) == true
 
+    fun teamSize(region: Region): Int =
+        checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.teamSize
+
     fun beginRoom(region: Region) {
         val raid = raids[region.uid] ?: return
         // ToB QoL observes room status 1 during the countdown before the first wave.
@@ -171,7 +174,10 @@ constructor(
         var names: List<String>? = null,
         var progressType: Int = 0,
         var progressValue: Int = 0,
-    )
+    ) {
+        // Keep encounter scaling stable if a member disconnects or leaves the instance.
+        val teamSize: Int = members.size
+    }
 
     private companion object {
         const val PARTY_SIZE = 5

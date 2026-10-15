@@ -50,7 +50,16 @@ constructor(
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
-                Encounter(region, waveCycle = clock + 4)
+                val smallHitpoints =
+                    when (val size = raid.teamSize(region)) {
+                        1,
+                        2,
+                        3 -> 8
+                        4 -> 9
+                        5 -> 11
+                        else -> error("Invalid raid team size: $size")
+                    }
+                Encounter(region, waveCycle = clock + 4, smallHitpoints = smallHitpoints)
             }
         }
     }
@@ -70,16 +79,18 @@ constructor(
             ) {
                 continue
             }
-            spawn(encounter.region, nylocas_npcs.small_magic, CoordGrid(3295, 4233, 0))
-            spawn(encounter.region, nylocas_npcs.small_ranged, CoordGrid(3281, 4249, 0))
-            spawn(encounter.region, nylocas_npcs.small_melee, CoordGrid(3310, 4248, 0))
+            spawn(encounter, nylocas_npcs.small_magic, CoordGrid(3295, 4233, 0))
+            spawn(encounter, nylocas_npcs.small_ranged, CoordGrid(3281, 4249, 0))
+            spawn(encounter, nylocas_npcs.small_melee, CoordGrid(3310, 4248, 0))
             encounter.spawned = true
             raid.waveSpawned(encounter.region)
         }
     }
 
-    private fun spawn(region: Region, type: NpcType, source: CoordGrid) {
-        val npc = Npc(npcTypes[type], region.normal[source])
+    private fun spawn(encounter: Encounter, type: NpcType, source: CoordGrid) {
+        val npc = Npc(npcTypes[type], encounter.region.normal[source])
+        npc.baseHitpointsLvl = encounter.smallHitpoints
+        npc.hitpoints = encounter.smallHitpoints
         // Movement and combat are a later milestone; retain official incoming IDs for plugins.
         npc.mode = NpcMode.None
         npc.setHunt(0)
@@ -88,5 +99,10 @@ constructor(
         npc.respawns = false
     }
 
-    private class Encounter(val region: Region, val waveCycle: Int, var spawned: Boolean = false)
+    private class Encounter(
+        val region: Region,
+        val waveCycle: Int,
+        val smallHitpoints: Int,
+        var spawned: Boolean = false,
+    )
 }

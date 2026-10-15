@@ -2,6 +2,8 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
@@ -14,6 +16,62 @@ class NylocasEncounterTest {
     class Dependencies
     @Inject
     constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
+
+    @ParameterizedTest
+    @CsvSource("1, 8", "2, 8", "3, 8", "4, 9", "5, 11")
+    fun `first wave scales current and maximum HP to the raid team`(
+        teamSize: Int,
+        expectedHp: Int,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            repeat(teamSize - 1) { registerPlayer(coords = room.normal[CoordGrid(3295, 4256, 0)]) }
+            advance()
+            deps.raid.start(player)
+            player.opLoc1(barrier)
+            advance(ticks = 5)
+
+            assertEquals(3, deps.npcs.count())
+            for (npc in deps.npcs) {
+                assertEquals(expectedHp, npc.hitpoints)
+                assertEquals(expectedHp, npc.baseHitpointsLvl)
+            }
+            advance(ticks = 40)
+            assertTrue(
+                deps.npcs.all { it.hitpoints == expectedHp && it.baseHitpointsLvl == expectedHp }
+            )
+        }
+
+    @Test
+    fun GameTestState.`departures during the countdown do not change raid HP scaling`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            val others = List(4) { registerPlayer(coords = room.normal[CoordGrid(3295, 4256, 0)]) }
+            advance()
+            deps.raid.start(player)
+            player.opLoc1(barrier)
+            advance()
+            others.forEach(::unregisterPlayer)
+            advance(ticks = 4)
+
+            assertEquals(3, deps.npcs.count())
+            assertTrue(deps.npcs.all { it.hitpoints == 11 && it.baseHitpointsLvl == 11 })
+        }
 
     @Test
     fun GameTestState.`pass enters the arena and spawns exactly one wave four ticks later`() =
