@@ -42,7 +42,9 @@ internal fun ProtectedAccess.weaponAttackRange(style: AttackStyle?): Int {
     val weapon = player.righthand
     if (weapon != null) {
         val weaponRange = ocParam(weapon, params.attackrange)
-        val increase = if (style == AttackStyle.LongrangeRanged) 2 else 0
+        val increase =
+            if (style == AttackStyle.LongrangeRanged || style == AttackStyle.LongrangeMagic) 2
+            else 0
         attackRange = weaponRange + increase
     }
 

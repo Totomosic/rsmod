@@ -5,6 +5,10 @@ plugins {
 
 kotlin {
     explicitApi()
+    val mainCompilation = target.compilations.getByName("main")
+    target.compilations.configureEach {
+        if (name == "integration") associateWith(mainCompilation)
+    }
 }
 
 dependencies {
@@ -32,4 +36,5 @@ dependencies {
     implementation(projects.engine.game)
     implementation(projects.engine.map)
     implementation(projects.engine.plugin)
+    integrationImplementation(projects.api.pluginCommons)
 }

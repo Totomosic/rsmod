@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.manager.CombatChargeManager
 import org.rsmod.api.config.refs.projanims
+import org.rsmod.api.config.refs.synths
 import org.rsmod.api.obj.charges.ObjChargeManager.Companion.isFailure
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.magicLvl
@@ -58,9 +59,16 @@ class EyeOfAyakWeapons @Inject constructor(private val charges: CombatChargeMana
             val projectile =
                 manager.spawnProjectile(this, target, EyeOfAyakSpots.travel, projanims.magic_spell)
             val (serverDelay, clientDelay) = projectile.durations
+            val castSound = synths.toa_shadow_weapon_cast_fire_01
 
             if (manager.rollStaffSplash(this, target, attack)) {
-                manager.playSplashFx(this, target, clientDelay, castSound = null, soundRadius = 10)
+                manager.playSplashFx(
+                    this,
+                    target,
+                    clientDelay,
+                    castSound = castSound,
+                    soundRadius = 10,
+                )
                 manager.queueSplashHit(this, target, clientDelay, serverDelay)
             } else {
                 val baseMaxHit = (player.magicLvl / 3) - 6
@@ -69,7 +77,7 @@ class EyeOfAyakWeapons @Inject constructor(private val charges: CombatChargeMana
                     this,
                     target,
                     clientDelay,
-                    castSound = null,
+                    castSound = castSound,
                     soundRadius = 10,
                     hitSpot = EyeOfAyakSpots.impact,
                     hitSpotHeight = 124,

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.styles.AttackStyle
 import org.rsmod.api.combat.commons.styles.MagicAttackStyle
 import org.rsmod.api.combat.commons.types.AttackType
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
@@ -62,6 +63,8 @@ class EyeOfAyakTest {
                 player.worn[Wearpos.RightHand.slot] = InvObj(eye)
                 assertEquals(WeaponCategory.PoweredStaff.id, deps.objTypes[eye].weaponCategory)
                 assertEquals(3, deps.objTypes[eye].param(params.attackrate))
+                assertEquals(7, deps.objTypes[eye].param(params.attackrange))
+                assertEquals(AttackStyle.LongrangeMagic, deps.styles.resolve(deps.objTypes[eye], 3))
                 assertEquals(AttackType.Magic, deps.types.get(player))
                 assertNotNull(deps.registry.getMagic(InvObj(eye)))
             }
@@ -382,6 +385,7 @@ class EyeOfAyakTest {
         val charges: EyeOfAyakCharges,
         val objTypes: ObjTypeList,
         val types: AttackTypes,
+        val styles: AttackStyles,
     )
 
     private object EyeTestModule : AbstractModule() {
