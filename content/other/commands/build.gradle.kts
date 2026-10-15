@@ -14,6 +14,7 @@ dependencies {
     implementation(projects.api.type.typeSymbols)
     implementation(projects.api.utils.utilsSystem)
     implementation(projects.engine.utilsBits)
+    implementation(projects.content.areas.dungeons.nylocas)
     integrationImplementation(projects.api.net)
     integrationImplementation(projects.api.registry)
 }
