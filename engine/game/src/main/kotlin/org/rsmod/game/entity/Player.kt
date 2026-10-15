@@ -74,6 +74,10 @@ public class Player(
     public val strVars: VarPlayerStrMap = VarPlayerStrMap()
 
     public val ui: UserInterfaceMap = UserInterfaceMap()
+
+    /** NPC tracking radius in tiles, applied before encoding each client update. */
+    public var npcViewDistance: Int = 15
+
     public val statMap: PlayerStatMap = PlayerStatMap()
     public val timerMap: PlayerTimerMap = PlayerTimerMap()
     public val softTimerMap: PlayerTimerMap = PlayerTimerMap()

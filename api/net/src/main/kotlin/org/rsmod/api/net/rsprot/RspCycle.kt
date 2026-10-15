@@ -124,7 +124,7 @@ class RspCycle(
         }
 
     private fun Player.updateCoords() {
-        npcInfo.updateCoord(worldId, level, x, z)
+        npcInfo.updateView(this, worldId)
         playerInfo.updateCoord(level, x, z)
         playerInfo.updateRenderCoord(worldId, level, x, z)
         knownCoords = coords
