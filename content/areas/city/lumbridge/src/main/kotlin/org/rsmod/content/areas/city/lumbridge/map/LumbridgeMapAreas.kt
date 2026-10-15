@@ -3,10 +3,16 @@ package org.rsmod.content.areas.city.lumbridge.map
 import org.rsmod.api.config.refs.areas
 import org.rsmod.api.type.builders.map.area.MapAreaBuilder
 import org.rsmod.game.area.polygon.VertexCoord
+import org.rsmod.game.type.area.AreaType
 
 object LumbridgeMapAreas : MapAreaBuilder() {
     override fun onPackMapTask() {
-        area(areas.lumbridge) {
+        packLumbridge(areas.lumbridge)
+        packLumbridge(areas.multiway)
+    }
+
+    private fun packLumbridge(type: AreaType) {
+        area(type) {
             polygon(levels = 0..3) {
                 vertex(VertexCoord(49, 49, 0, 0))
                 vertex(VertexCoord(50, 49, 53, 0))
