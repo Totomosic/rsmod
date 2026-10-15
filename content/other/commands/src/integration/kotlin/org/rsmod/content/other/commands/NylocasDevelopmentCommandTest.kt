@@ -54,6 +54,12 @@ class NylocasDevelopmentCommandTest {
                 assertEquals(ZoneKey.from(source), copy.normalZone())
                 assertEquals(0, copy.rotation)
             }
+
+            deps.handler.handle(player, ClientCheat("nylocasbridge"))
+            advance()
+            assertNotNull(deps.regions[player.coords])
+            assertEquals(CoordGrid(3295, 4264, 0), deps.regions.normalizeCoords(player.coords))
+            assertEquals(0, deps.collision[player.coords] and CollisionFlag.BLOCK_WALK)
         }
 
     @Test
@@ -61,11 +67,13 @@ class NylocasDevelopmentCommandTest {
         runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.player]
             val original = player.coords
-            deps.handler.handle(player, ClientCheat("nylocas"))
-            advance()
+            for (command in listOf("nylocas", "nylocasbridge")) {
+                deps.handler.handle(player, ClientCheat(command))
+                advance()
 
-            assertEquals(original, player.coords)
-            assertNull(deps.regions[player.coords])
+                assertEquals(original, player.coords)
+                assertNull(deps.regions[player.coords])
+            }
         }
 
     @Test

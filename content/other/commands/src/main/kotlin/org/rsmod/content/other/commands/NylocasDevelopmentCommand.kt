@@ -18,10 +18,19 @@ constructor(
     private val regionRepo: RegionRepository,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
-        onCommand("nylocas", "Enter an empty Nylocas development instance", ::teleport)
+        onCommand(
+            "nylocas",
+            "Enter an empty Nylocas development instance",
+            { teleport(this, arena) },
+        )
+        onCommand(
+            "nylocasbridge",
+            "Teleport onto the bridge outside Nylocas",
+            { teleport(this, bridge) },
+        )
     }
 
-    private fun teleport(cheat: Cheat) {
+    private fun teleport(cheat: Cheat, destination: CoordGrid) {
         val player = cheat.player
         val launched =
             protectedAccess.launch(player) {
@@ -30,8 +39,10 @@ constructor(
                     mes("Could not create the Nylocas room. Try again in a few seconds.")
                     return@launch
                 }
-                telejump(region.normal[entrance])
-                mes("Entered the Nylocas development room. The encounter is not implemented yet.")
+                telejump(region.normal[destination])
+                mes(
+                    "Entered the Nylocas development instance. The encounter is not implemented yet."
+                )
             }
         if (!launched) {
             player.mes(constants.dm_busy)
@@ -39,7 +50,8 @@ constructor(
     }
 
     private companion object {
-        private val entrance = CoordGrid(3295, 4248, 0)
+        private val arena = CoordGrid(3295, 4248, 0)
+        private val bridge = CoordGrid(3295, 4264, 0)
 
         // Keep region 13122 as the instance source: ToB QoL checks both the instance flag and
         // template region. A static teleport or unrelated blank map does not satisfy its checks.
