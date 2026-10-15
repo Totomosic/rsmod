@@ -152,8 +152,8 @@ public class Npc(
     public val name: String
         get() = type.name
 
-    public val moveRestrict: MoveRestrict
-        get() = type.moveRestrict
+    /** Per-npc movement restriction, allowing scripted phases to override the type's default. */
+    public var moveRestrict: MoveRestrict = type.moveRestrict
 
     public val blockWalk: BlockWalk
         get() = type.blockWalk

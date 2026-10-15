@@ -78,10 +78,10 @@ constructor(
         sync(raid)
     }
 
-    fun waveSpawned(region: Region) {
+    fun waveSpawned(region: Region, wave: Int = 1) {
         val raid = raids[region.uid] ?: return
         raid.progressType = 2
-        raid.progressValue = 1
+        raid.progressValue = wave
         sync(raid)
     }
 

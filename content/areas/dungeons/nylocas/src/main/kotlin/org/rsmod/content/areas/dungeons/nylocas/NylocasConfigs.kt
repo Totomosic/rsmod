@@ -14,6 +14,32 @@ object nylocas_npcs : NpcReferences() {
     val small_magic = find("tob_nylocas_incoming_magic")
     val small_ranged = find("tob_nylocas_incoming_ranged")
     val small_melee = find("tob_nylocas_incoming_melee")
+    val big_magic = find("tob_nylocas_big_incoming_magic")
+    val big_ranged = find("tob_nylocas_big_incoming_ranged")
+    val big_melee = find("tob_nylocas_big_incoming_melee")
+    val small_fighting_magic = find("tob_nylocas_fighting_magic")
+    val small_fighting_ranged = find("tob_nylocas_fighting_ranged")
+    val small_fighting_melee = find("tob_nylocas_fighting_melee")
+    val big_fighting_magic = find("tob_nylocas_big_fighting_magic")
+    val big_fighting_ranged = find("tob_nylocas_big_fighting_ranged")
+    val big_fighting_melee = find("tob_nylocas_big_fighting_melee")
+
+    fun incoming(size: NylocasSize, style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> if (size == NylocasSize.Small) small_melee else big_melee
+            NylocasStyle.Ranged -> if (size == NylocasSize.Small) small_ranged else big_ranged
+            NylocasStyle.Magic -> if (size == NylocasSize.Small) small_magic else big_magic
+        }
+
+    fun fighting(size: NylocasSize, style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee ->
+                if (size == NylocasSize.Small) small_fighting_melee else big_fighting_melee
+            NylocasStyle.Ranged ->
+                if (size == NylocasSize.Small) small_fighting_ranged else big_fighting_ranged
+            NylocasStyle.Magic ->
+                if (size == NylocasSize.Small) small_fighting_magic else big_fighting_magic
+        }
 }
 
 object tob_interfaces : InterfaceReferences() {

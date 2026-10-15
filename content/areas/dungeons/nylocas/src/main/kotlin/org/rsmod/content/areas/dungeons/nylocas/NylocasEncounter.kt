@@ -12,9 +12,7 @@ import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.region.Region
-import org.rsmod.game.type.npc.NpcType
 import org.rsmod.game.type.npc.NpcTypeList
-import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -26,12 +24,15 @@ constructor(
     private val npcTypes: NpcTypeList,
     private val clock: MapClock,
     private val raid: TheatreRaid,
+    private val waves: NylocasWaveTable,
+    private val behaviour: NylocasBehaviour,
 ) : PluginScript() {
     private val encounters = mutableMapOf<Int, Encounter>()
 
     override fun ScriptContext.startup() {
         onOpLoc1(nylocas_locs.barrier) { pass(it.loc) }
         onEvent<GameLifecycle.StartCycle> { processEncounters() }
+        behaviour.register(this)
     }
 
     private fun ProtectedAccess.pass(barrier: BoundLocInfo) {
@@ -50,21 +51,17 @@ constructor(
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
-                val smallHitpoints =
-                    when (val size = raid.teamSize(region)) {
-                        1,
-                        2,
-                        3 -> 8
-                        4 -> 9
-                        5 -> 11
-                        else -> error("Invalid raid team size: $size")
-                    }
-                Encounter(region, waveCycle = clock + 4, smallHitpoints = smallHitpoints)
+                Encounter(
+                    region,
+                    waveCycle = clock + waves.waves.first().ticksAfterPrevious,
+                    teamSize = raid.teamSize(region),
+                )
             }
         }
     }
 
     private fun processEncounters() {
+        behaviour.prune()
         val iterator = encounters.values.iterator()
         while (iterator.hasNext()) {
             val encounter = iterator.next()
@@ -73,36 +70,40 @@ constructor(
                 continue
             }
             if (
-                encounter.spawned ||
+                encounter.waveIndex >= waves.waves.size ||
                     clock < encounter.waveCycle ||
                     regions.isEmpty(encounter.region)
             ) {
                 continue
             }
-            spawn(encounter, nylocas_npcs.small_magic, CoordGrid(3295, 4233, 0))
-            spawn(encounter, nylocas_npcs.small_ranged, CoordGrid(3281, 4249, 0))
-            spawn(encounter, nylocas_npcs.small_melee, CoordGrid(3310, 4248, 0))
-            encounter.spawned = true
-            raid.waveSpawned(encounter.region)
+            for ((slot, spawn) in waves.waves[encounter.waveIndex].spawns) {
+                spawn(encounter, slot, spawn)
+            }
+            encounter.waveIndex++
+            raid.waveSpawned(encounter.region, encounter.waveIndex)
+            waves.waves.getOrNull(encounter.waveIndex)?.let {
+                encounter.waveCycle = clock + it.ticksAfterPrevious
+            }
         }
     }
 
-    private fun spawn(encounter: Encounter, type: NpcType, source: CoordGrid) {
-        val npc = Npc(npcTypes[type], encounter.region.normal[source])
-        npc.baseHitpointsLvl = encounter.smallHitpoints
-        npc.hitpoints = encounter.smallHitpoints
-        // Movement and combat are a later milestone; retain official incoming IDs for plugins.
+    private fun spawn(encounter: Encounter, slot: NylocasSlot, spawn: NylocasSpawn) {
+        val type = nylocas_npcs.incoming(spawn.size, spawn.style)
+        val npc = Npc(npcTypes[type], encounter.region.normal[slot.source])
+        npc.baseHitpointsLvl = spawn.size.hitpoints(encounter.teamSize)
+        npc.hitpoints = npc.baseHitpointsLvl
         npc.mode = NpcMode.None
         npc.setHunt(0)
         npc.aiTimer = 0
         npcRepo.add(npc, Int.MAX_VALUE)
         npc.respawns = false
+        behaviour.add(npc, encounter.region, slot, spawn)
     }
 
     private class Encounter(
         val region: Region,
-        val waveCycle: Int,
-        val smallHitpoints: Int,
-        var spawned: Boolean = false,
+        var waveCycle: Int,
+        val teamSize: Int,
+        var waveIndex: Int = 0,
     )
 }
