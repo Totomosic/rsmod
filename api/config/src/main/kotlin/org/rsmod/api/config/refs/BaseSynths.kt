@@ -7,6 +7,7 @@ import org.rsmod.api.type.refs.synth.SynthReferences
 typealias synths = BaseSynths
 
 object BaseSynths : SynthReferences() {
+    val dart = find("dart")
     val door_close = find("door_close")
     val door_open = find("door_open")
     val picketgate_close = find("picketgate_close")

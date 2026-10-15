@@ -7,6 +7,7 @@ import org.rsmod.api.combat.manager.RangedAmmoManager
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.projanims
+import org.rsmod.api.config.refs.synths
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.worn.Blowpipe
@@ -87,6 +88,7 @@ constructor(
             val damage = manager.rollRangedDamage(this, target, attack)
             manager.giveCombatXp(this, target, attack, damage)
             manager.queueRangedHit(this, target, dartType, damage, clientDelay, serverDelay)
+            manager.soundArea(target, synths.dart, delay = clientDelay, radius = 10)
 
             val useDart = ammunition.useStoredAmmo(player, dartType, target.coords, serverDelay)
             val useScale = damageRandom.of(3) != 0
