@@ -5,9 +5,11 @@ import jakarta.inject.Inject
 import kotlin.math.max
 import kotlin.math.min
 import org.rsmod.annotations.InternalApi
+import org.rsmod.api.config.constants
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invClear
 import org.rsmod.api.player.output.MiscOutput
+import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.stat.PlayerSkillXP
@@ -108,7 +110,12 @@ constructor(
         onCommand("slowreboot", "Reboots the game world, with a timer", ::slowReboot)
     }
 
-    private fun master(cheat: Cheat) = with(cheat) { player.setStatLevels(level = 99) }
+    private fun master(cheat: Cheat) =
+        with(cheat) {
+            player.setStatLevels(level = 99)
+            player.runEnergy = constants.run_max_energy
+            UpdateRun.energy(player, player.runEnergy)
+        }
 
     private fun reset(cheat: Cheat) = with(cheat) { player.setStatLevels(level = 1) }
 
