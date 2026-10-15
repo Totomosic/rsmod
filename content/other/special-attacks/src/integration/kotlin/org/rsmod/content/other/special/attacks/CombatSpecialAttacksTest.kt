@@ -10,7 +10,10 @@ import org.junit.jupiter.api.parallel.ExecutionMode
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
+import org.rsmod.api.combat.commons.styles.RangedAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
+import org.rsmod.api.combat.commons.types.RangedAttackType
+import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
@@ -100,6 +103,40 @@ class CombatSpecialAttacksTest {
     }
 
     @Test
+    fun GameTestState.`shared melee ranged and powered staff damage rolls clamp zero to one`() =
+        runSpecialsTest { deps ->
+            val npc = spawnDummy()
+            random.next = 0
+            assertEquals(
+                1,
+                deps.attacks.rollMeleeMaxHit(
+                    player,
+                    npc,
+                    MeleeAttackType.Slash,
+                    MeleeAttackStyle.Accurate,
+                    1.0,
+                ),
+            )
+            random.next = 0
+            assertEquals(
+                1,
+                deps.attacks.rollRangedMaxHit(
+                    player,
+                    npc,
+                    RangedAttackType.Standard,
+                    RangedAttackStyle.Accurate,
+                    1.0,
+                    0,
+                ),
+            )
+            random.next = 0
+            assertEquals(
+                1,
+                deps.attacks.rollStaffMaxHit(player, npc, baseMaxHit = 45, multiplier = 1.0),
+            )
+        }
+
+    @Test
     fun GameTestState.`dragon warhammer drains defence by 30 percent on hit`() =
         runSpecialsTest { deps ->
             val npc = spawnDummy()
@@ -127,6 +164,18 @@ class CombatSpecialAttacksTest {
             useMeleeSpecial(deps, special_objs.bandos_godsword, npc, MeleeAttackType.Slash)
             assertEquals(0, npc.defenceLvl)
             assertEquals(DUMMY_STRENGTH - 7, npc.strengthLvl)
+        }
+
+    @Test
+    fun GameTestState.`godsword accurate zero damage roll deals one and freezes`() =
+        runSpecialsTest { deps ->
+            val npc = spawnDummy()
+            random.next = HIT_ROLL
+            random.then = 0
+            useMeleeSpecial(deps, special_objs.zamorak_godsword, npc, MeleeAttackType.Slash)
+            assertTrue(npc.isFrozen())
+            advance()
+            assertEquals(DUMMY_HITPOINTS - 1, npc.hitpoints)
         }
 
     @Test
@@ -292,7 +341,9 @@ class CombatSpecialAttacksTest {
             testBody = testBody,
         )
 
-    class SpecialsTestDependencies @Inject constructor(val registry: SpecialAttackRegistry)
+    class SpecialsTestDependencies
+    @Inject
+    constructor(val registry: SpecialAttackRegistry, val attacks: PlayerAttackManager)
 
     private object SpecialsTestModule : AbstractModule() {
         override fun configure() {

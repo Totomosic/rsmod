@@ -3,6 +3,7 @@ package org.rsmod.content.other.special.attacks.melee
 import kotlin.math.max
 import kotlin.math.min
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.rollDamage
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.stats
@@ -164,7 +165,7 @@ class GodswordSpecialAttacks : SpecialAttackMap {
             if (maxHit <= 0) {
                 return 0
             }
-            return random.of(1..maxHit)
+            return random.rollDamage(maxHit)
         }
 
         private fun ProtectedAccess.healingBlade(damage: Int) {

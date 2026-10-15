@@ -50,7 +50,7 @@ class SulphurBladesTest {
             random.then = HIT_ROLL
             useBlades(deps, npc)
 
-            assertEquals(listOf(1..22, 1..23), damageRandom.ranges)
+            assertEquals(listOf(0..22, 0..23), damageRandom.ranges)
             assertEquals(listOf(22 to 1, 23 to 1), npc.pendingHits())
             assertEquals(DUMMY_HITPOINTS, npc.hitpoints)
             advance()
@@ -69,7 +69,7 @@ class SulphurBladesTest {
             random.next = HIT_ROLL
             random.then = HIT_ROLL
             useBlades(deps, npc)
-            assertEquals(listOf(1..22, 1..22), damageRandom.ranges)
+            assertEquals(listOf(0..22, 0..22), damageRandom.ranges)
             assertEquals(listOf(22 to 1, 22 to 1), npc.pendingHits())
         }
     }
@@ -91,6 +91,20 @@ class SulphurBladesTest {
         assertAccuracyOutcomes(firstHits = false, secondHits = false)
 
     @Test
+    fun GameTestState.`accurate zero damage rolls deal one on each splat`() =
+        runWeaponsTest { deps ->
+            val npc = spawnDummy()
+            random.next = HIT_ROLL
+            random.then = 0
+            random.then = HIT_ROLL
+            random.then = 0
+            useBlades(deps, npc)
+            assertEquals(listOf(1 to 1, 1 to 1), npc.pendingHits())
+            advance()
+            assertEquals(DUMMY_HITPOINTS - 2, npc.hitpoints)
+        }
+
+    @Test
     fun GameTestState.`max hit of one gives a zero first splat without an invalid damage roll`() {
         val damageRandom = MaximumDamageRandom()
         runWeaponsTest(damageRandom) { deps ->
@@ -106,7 +120,7 @@ class SulphurBladesTest {
             random.next = HIT_ROLL
             random.then = HIT_ROLL
             useBlades(deps, npc)
-            assertEquals(listOf(1..1), damageRandom.ranges)
+            assertEquals(listOf(0..1), damageRandom.ranges)
             assertEquals(listOf(0 to 1, 1 to 1), npc.pendingHits())
             advance()
             assertEquals(DUMMY_HITPOINTS - 1, npc.hitpoints)
@@ -126,7 +140,7 @@ class SulphurBladesTest {
             random.next = HIT_ROLL
             random.then = HIT_ROLL
             useBlades(deps, target)
-            assertEquals(listOf(1..22, 1..23), damageRandom.ranges)
+            assertEquals(listOf(0..22, 0..23), damageRandom.ranges)
             assertEquals(startingHp, target.hitpoints)
             advance()
             assertEquals(startingHp - 45, target.hitpoints)

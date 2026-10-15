@@ -2,6 +2,7 @@ package org.rsmod.content.other.special.weapons.melee
 
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.rollDamage
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.weapons.MeleeWeapon
@@ -74,7 +75,7 @@ class SulphurBladesWeapons @Inject constructor(private val random: GameRandom) :
                     blockType = attack.type,
                     multiplier = 1.0,
                 )
-            return if (accurate && maxHit > 0) damageRandom.of(1..maxHit) else 0
+            return if (accurate && maxHit > 0) damageRandom.rollDamage(maxHit) else 0
         }
     }
 }

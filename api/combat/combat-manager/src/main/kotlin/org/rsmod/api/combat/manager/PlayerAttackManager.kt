@@ -14,6 +14,7 @@ import org.rsmod.api.combat.commons.player.combatPlayDefendAnim
 import org.rsmod.api.combat.commons.player.combatPlayDefendSpot
 import org.rsmod.api.combat.commons.player.queueCombatRetaliate
 import org.rsmod.api.combat.commons.player.resolveCombatXpMultiplier
+import org.rsmod.api.combat.commons.rollDamage
 import org.rsmod.api.combat.commons.styles.MagicAttackStyle
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
@@ -449,7 +450,7 @@ constructor(
      * This function first determines if the attack hits by calling [rollMeleeAccuracy]. If the
      * accuracy roll is successful, it then calculates the damage by calling [rollMeleeMaxHit].
      *
-     * Note: Even if the accuracy roll succeeds, [rollMeleeMaxHit] can still return `0`.
+     * Successful accuracy rolls deal at least `1` damage before hit processing.
      *
      * @param accuracyMultiplier Multiplier to apply to accuracy (`1.0` = no change, `1.1` = +10%
      *   boost, `0.9` = -10% penalty).
@@ -463,8 +464,8 @@ constructor(
      *   same as [attackType], but certain scenarios override this with a fixed value. For example,
      *   a Dragon longsword special attack always uses `Slash` for [blockType], even though
      *   [attackType] remains dynamic.
-     * @return `0` if the accuracy roll fails; otherwise, a random damage value from `0` up to the
-     *   calculated max hit.
+     * @return `0` if the accuracy roll fails; otherwise, damage rolled from zero through the
+     *   calculated max hit and clamped to at least `1`.
      */
     public fun rollMeleeDamage(
         source: Player,
@@ -564,7 +565,7 @@ constructor(
         )
 
     /**
-     * Rolls a random damage value between `0` and the maximum possible melee hit.
+     * Rolls melee damage from zero through the max hit, clamping the result to at least `1`.
      *
      * This function first calculates the maximum melee hit with any applicable boosts by calling
      * [calculateMeleeMaxHit], and then rolls a random value within that range.
@@ -575,7 +576,7 @@ constructor(
      *   Usually based on the current `CombatAttack.Melee` attack but can be overridden.
      * @param multiplier Multiplier to apply to max hit (`1.0` = no change, `1.1` = +10% boost,
      *   `0.9` = -10% penalty).
-     * @return A random damage value between `0` and the calculated max hit.
+     * @return The damage roll, clamped to at least `1`.
      */
     public fun rollMeleeMaxHit(
         source: Player,
@@ -585,7 +586,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateMeleeMaxHit(source, target, attackType, attackStyle, multiplier)
-        return random.of(1..maxHit)
+        return random.rollDamage(maxHit)
     }
 
     /**
@@ -694,7 +695,7 @@ constructor(
      * This function first determines if the attack hits by calling [rollRangedAccuracy]. If the
      * accuracy roll is successful, it then calculates the damage by calling [rollRangedMaxHit].
      *
-     * Note: Even if the accuracy roll succeeds, [rollRangedMaxHit] can still return `0`.
+     * Successful accuracy rolls deal at least `1` damage before hit processing.
      *
      * @param accuracyMultiplier Multiplier to apply to accuracy (`1.0` = no change, `1.1` = +10%
      *   boost, `0.9` = -10% penalty).
@@ -708,8 +709,8 @@ constructor(
      *   same as [attackType], but certain scenarios override this with a fixed value.
      * @param boltSpecDamage The additive bonus damage from bolt special attacks. For example, Opal
      *   bolts (e) special should set this value to `visible ranged level * 10%, rounded down`.
-     * @return `0` if the accuracy roll fails; otherwise, a random damage value from `0` up to the
-     *   calculated max hit.
+     * @return `0` if the accuracy roll fails; otherwise, damage rolled from zero through the
+     *   calculated max hit and clamped to at least `1`.
      */
     public fun rollRangedDamage(
         source: Player,
@@ -811,7 +812,7 @@ constructor(
         )
 
     /**
-     * Rolls a random damage value between `0` and the maximum possible ranged hit.
+     * Rolls ranged damage from zero through the max hit, clamping the result to at least `1`.
      *
      * This function first calculates the maximum ranged hit with any applicable boosts by calling
      * [calculateRangedMaxHit], and then rolls a random value within that range.
@@ -824,7 +825,7 @@ constructor(
      *   `0.9` = -10% penalty).
      * @param boltSpecDamage The additive bonus damage from bolt special attacks. For example, Opal
      *   bolts (e) special should set this value to `visible ranged level * 10%, rounded down`.
-     * @return A random damage value between `0` and the calculated max hit.
+     * @return The damage roll, clamped to at least `1`.
      */
     public fun rollRangedMaxHit(
         source: Player,
@@ -843,7 +844,7 @@ constructor(
                 multiplier = multiplier,
                 boltSpecDamage = boltSpecDamage,
             )
-        return random.of(1..maxHit)
+        return random.rollDamage(maxHit)
     }
 
     /**
@@ -1328,8 +1329,8 @@ constructor(
         )
 
     /**
-     * Rolls a random damage value between `0` and the maximum possible hit for a powered staff's
-     * built-in spell.
+     * Rolls powered-staff damage from zero through the max hit, clamping the result to at least
+     * `1`.
      *
      * This function first calculates the maximum magic hit for the built-in spell by calling
      * [calculateStaffMaxHit], and then rolls a random value within that range.
@@ -1338,7 +1339,7 @@ constructor(
      *   are applied.
      * @param multiplier Multiplier to apply to max hit (`1.0` = no change, `1.1` = +10% boost,
      *   `0.9` = -10% penalty).
-     * @return A random damage value between `0` and the calculated max hit.
+     * @return The damage roll, clamped to at least `1`.
      */
     public fun rollStaffMaxHit(
         source: Player,
@@ -1347,7 +1348,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateStaffMaxHit(source, target, baseMaxHit, multiplier)
-        return random.of(1..maxHit)
+        return random.rollDamage(maxHit)
     }
 
     /**
