@@ -1,5 +1,6 @@
 plugins {
     id("base-conventions")
+    id("integration-test-suite")
 }
 
 dependencies {
@@ -13,4 +14,6 @@ dependencies {
     implementation(projects.api.type.typeSymbols)
     implementation(projects.api.utils.utilsSystem)
     implementation(projects.engine.utilsBits)
+    integrationImplementation(projects.api.net)
+    integrationImplementation(projects.api.registry)
 }
