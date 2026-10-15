@@ -3,6 +3,13 @@ package org.rsmod.content.other.special.weapons.configs
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.type.editors.obj.ObjEditor
+import org.rsmod.api.type.refs.obj.ObjReferences
+
+typealias special_weapon_objs = SpecialWeaponObjs
+
+object SpecialWeaponObjs : ObjReferences() {
+    val sulphur_blades = find("sulphur_blades")
+}
 
 internal object SpecialWeaponObjEditor : ObjEditor() {
     init {
