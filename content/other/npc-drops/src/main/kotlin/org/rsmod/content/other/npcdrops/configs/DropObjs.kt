@@ -40,6 +40,7 @@ object DropObjs : ObjReferences() {
     val copper_ore = find("copper_ore")
     val cowhide = find("cow_hide")
     val curved_bone = find("dorgesh_construction_bone_curved")
+    val dragon_claws = find("dragon_claws")
     val earth_rune = find("earthrune")
     val earth_talisman = find("earth_talisman")
     val egg = find("egg")

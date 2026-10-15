@@ -18,7 +18,10 @@ import org.rsmod.api.player.output.UpdateStat
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.startInvTransmit
+import org.rsmod.api.player.stat.PlayerSkillXP
 import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.ui.PlayerInterfaceUpdates
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.realm.Realm
@@ -27,6 +30,7 @@ import org.rsmod.api.stats.levelmod.InvisibleLevels
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.SessionStateEvent
+import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.stat.StatTypeList
 import org.rsmod.game.type.varp.UnpackedVarpType
@@ -54,8 +58,31 @@ constructor(
     }
 
     private fun Player.engineLogin() {
+        maxStats()
+        unlockPrayers()
         sendHighPriority()
         sendLowPriority()
+    }
+
+    private fun Player.maxStats() {
+        for (stat in statTypes.values) {
+            val level = stat.maxLevel
+            val fineXp = PlayerSkillXPTable.getFineXPFromLevel(level)
+            statMap.setFineXP(stat, maxOf(statMap.getFineXP(stat), fineXp))
+            statMap.setBaseLevel(stat, level.toByte())
+            statMap.setCurrentLevel(stat, level.toByte())
+        }
+        appearance.combatLevel = PlayerSkillXP.calculateCombatLevel(this)
+        PlayerInterfaceUpdates.updateCombatLevel(this)
+    }
+
+    private fun Player.unlockPrayers() {
+        VarPlayerIntMapSetter.set(this, varbits.kr_knightwaves_state, 8)
+        VarPlayerIntMapSetter.set(this, varbits.preserve_unlocked, 1)
+        VarPlayerIntMapSetter.set(this, varbits.rigour_unlocked, 1)
+        VarPlayerIntMapSetter.set(this, varbits.augury_unlocked, 1)
+        VarPlayerIntMapSetter.set(this, varbits.prayer_deadeye_unlocked, 1)
+        VarPlayerIntMapSetter.set(this, varbits.prayer_mystic_vigour_unlocked, 1)
     }
 
     private fun Player.sendHighPriority() {
