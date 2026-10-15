@@ -25,6 +25,7 @@ constructor(
     private val npcRepo: NpcRepository,
     private val npcTypes: NpcTypeList,
     private val clock: MapClock,
+    private val raid: TheatreRaid,
 ) : PluginScript() {
     private val encounters = mutableMapOf<Int, Encounter>()
 
@@ -41,9 +42,16 @@ constructor(
             return
         }
         val entering = player.coords.z > barrier.coords.z
+        if (entering && !raid.isStarted(player, region)) {
+            mes("Click Start Raid before passing the Nylocas barrier.")
+            return
+        }
         telejump(region.normal[source.translateZ(if (entering) -1 else 1)])
         if (entering) {
-            encounters.getOrPut(region.uid) { Encounter(region, waveCycle = clock + 4) }
+            encounters.getOrPut(region.uid) {
+                raid.beginRoom(region)
+                Encounter(region, waveCycle = clock + 4)
+            }
         }
     }
 
@@ -66,6 +74,7 @@ constructor(
             spawn(encounter.region, nylocas_npcs.small_ranged, CoordGrid(3281, 4249, 0))
             spawn(encounter.region, nylocas_npcs.small_melee, CoordGrid(3310, 4248, 0))
             encounter.spawned = true
+            raid.waveSpawned(encounter.region)
         }
     }
 

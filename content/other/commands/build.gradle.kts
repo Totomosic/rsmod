@@ -17,4 +17,5 @@ dependencies {
     implementation(projects.content.areas.dungeons.nylocas)
     integrationImplementation(projects.api.net)
     integrationImplementation(projects.api.registry)
+    integrationImplementation(projects.content.areas.dungeons.nylocas)
 }

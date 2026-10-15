@@ -25,6 +25,7 @@ class BloatExitTest {
         val locs: LocRepository,
         val npcs: NpcList,
         val collision: CollisionFlagMap,
+        val raid: TheatreRaid,
     )
 
     @Test
@@ -63,12 +64,18 @@ class BloatExitTest {
 
     @Test
     fun GameTestState.`exit traversal leaves the barrier encounter ready to start`() =
-        runInjectedGameTest(Dependencies::class, null, BloatExit::class, NylocasEncounter::class) {
-            deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            BloatExit::class,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val source = placeMapLoc(CoordGrid(3295, 4255, 0), nylocas_locs.barrier)
             val room = checkNotNull(deps.exit.createRoom())
             player.telejump(room.normal[BloatExitRoom.doorstep])
             advance()
+            deps.raid.start(player)
             player.opLoc1(passage(room, deps, 4447))
             advance(ticks = 8)
             assertEquals(0, deps.npcs.count())

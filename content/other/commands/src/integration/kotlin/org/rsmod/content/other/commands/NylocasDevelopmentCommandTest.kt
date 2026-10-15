@@ -7,6 +7,9 @@ import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
+import org.rsmod.content.areas.dungeons.nylocas.tob_interfaces
+import org.rsmod.content.areas.dungeons.nylocas.tob_varbits
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.mod.ModLevelTypeList
@@ -24,6 +27,30 @@ class NylocasDevelopmentCommandTest {
         val modLevels: ModLevelTypeList,
         val collision: CollisionFlagMap,
     )
+
+    @Test
+    fun GameTestState.`start raid command initializes the HUD in the current room`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            player.modLevel = deps.modLevels[modlevels.admin]
+            deps.handler.handle(player, ClientCheat("bloatexit"))
+            advance(ticks = 2)
+            val original = player.coords
+            deps.handler.handle(player, ClientCheat("starttob"))
+
+            assertEquals(original, player.coords)
+            assertEquals(2, player.vars[tob_varbits.party_status])
+            assertEquals(1, player.vars[tob_varbits.party_slot])
+            assertTrue(player.vars[tob_varbits.party_hp[0]] > 0)
+            assertTrue(player.ui.containsOverlay(tob_interfaces.hud))
+            deps.handler.handle(player, ClientCheat("starttob"))
+            assertEquals(original, player.coords)
+            assertEquals(2, player.vars[tob_varbits.party_status])
+        }
 
     @Test
     fun GameTestState.`admin enters an instance preserving plugin source coordinates`() =
@@ -75,7 +102,7 @@ class NylocasDevelopmentCommandTest {
         runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.player]
             val original = player.coords
-            for (command in listOf("nylocas", "nylocasbridge", "bloatexit")) {
+            for (command in listOf("nylocas", "nylocasbridge", "bloatexit", "starttob")) {
                 deps.handler.handle(player, ClientCheat(command))
                 advance()
 

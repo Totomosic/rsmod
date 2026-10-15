@@ -8,6 +8,7 @@ import org.rsmod.api.repo.region.RegionRepository
 import org.rsmod.content.areas.dungeons.nylocas.BloatExit
 import org.rsmod.content.areas.dungeons.nylocas.BloatExitRoom
 import org.rsmod.content.areas.dungeons.nylocas.NylocasRoom
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
@@ -20,8 +21,19 @@ constructor(
     private val protectedAccess: ProtectedAccessLauncher,
     private val regionRepo: RegionRepository,
     private val bloatExit: BloatExit,
+    private val raid: TheatreRaid,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
+        onCommand(
+            "starttob",
+            "Start the Theatre of Blood raid and show the party HUD",
+            {
+                val launched = protectedAccess.launch(player) { raid.start(player) }
+                if (!launched) {
+                    player.mes(constants.dm_busy)
+                }
+            },
+        )
         onCommand(
             "nylocas",
             "Enter a Nylocas development instance",
@@ -53,7 +65,9 @@ constructor(
                     return@launch
                 }
                 telejump(region.normal[destination])
-                mes("Entered the Nylocas development instance. Pass the barrier to start wave one.")
+                mes(
+                    "Entered the development instance. Click Start Raid before passing the Nylocas barrier."
+                )
             }
         if (!launched) {
             player.mes(constants.dm_busy)

@@ -11,16 +11,24 @@ import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
 
 class NylocasEncounterTest {
-    class Dependencies @Inject constructor(val regions: RegionRegistry, val npcs: NpcList)
+    class Dependencies
+    @Inject
+    constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
 
     @Test
     fun GameTestState.`pass enters the arena and spawns exactly one wave four ticks later`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val room = createRoom()
             val barrier = placeBarrier(room)
             player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
             advance(ticks = 8)
             assertEquals(0, deps.npcs.count())
+            deps.raid.start(player)
 
             player.opLoc1(barrier)
             advance()
@@ -47,7 +55,12 @@ class NylocasEncounterTest {
     @Test
     fun GameTestState
         .`both barrier halves share one countdown independent of the starting player`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val room = createRoom()
             val west = placeBarrier(room)
             val east = placeBarrier(room, x = 3296)
@@ -55,6 +68,7 @@ class NylocasEncounterTest {
             val other = registerPlayer(coords = room.normal[CoordGrid(3296, 4256, 0)])
             advance()
 
+            deps.raid.start(player)
             player.opLoc1(west)
             advance()
             other.opLoc1(east)
@@ -75,7 +89,12 @@ class NylocasEncounterTest {
 
     @Test
     fun GameTestState.`separate instances spawn their own waves`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val first = createRoom()
             val firstBarrier = placeBarrier(first)
             player.telejump(first.normal[CoordGrid(3295, 4256, 0)])
@@ -85,6 +104,8 @@ class NylocasEncounterTest {
             val secondBarrier = placeBarrier(second)
             val other = registerPlayer(coords = second.normal[CoordGrid(3295, 4256, 0)])
             advance()
+            deps.raid.start(player)
+            deps.raid.start(other)
             player.opLoc1(firstBarrier)
             other.opLoc1(secondBarrier)
             advance(ticks = 4)
@@ -98,11 +119,17 @@ class NylocasEncounterTest {
 
     @Test
     fun GameTestState.`reclaiming a room cancels pending spawns`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val room = createRoom()
             val barrier = placeBarrier(room)
             player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
             advance()
+            deps.raid.start(player)
             player.opLoc1(barrier)
             advance()
 
@@ -116,7 +143,12 @@ class NylocasEncounterTest {
 
     @Test
     fun GameTestState.`passing from inside only exits and does not start a wave`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val room = createRoom()
             val barrier = placeBarrier(room)
             player.telejump(room.normal[CoordGrid(3295, 4254, 0)])
@@ -131,7 +163,12 @@ class NylocasEncounterTest {
 
     @Test
     fun GameTestState.`the shared barrier type outside Nylocas does not start a wave`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasEncounter::class) { deps ->
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
             val source = CoordGrid(3200, 3200, 0)
             val barrier = placeMapLoc(source, nylocas_locs.barrier)
             player.telejump(source.translateZ(1))
