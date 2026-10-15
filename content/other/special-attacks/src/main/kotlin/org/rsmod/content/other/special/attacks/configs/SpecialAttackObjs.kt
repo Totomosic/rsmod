@@ -5,6 +5,9 @@ import org.rsmod.api.type.refs.obj.ObjReferences
 typealias special_objs = SpecialAttackObjs
 
 object SpecialAttackObjs : ObjReferences() {
+    val dinhs_bulwark = find("dinhs_bulwark")
+    val dinhs_blazing_bulwark = find("dinhs_bulwark_ornament")
+
     val dragon_dagger = find("dragon_dagger")
     val dragon_dagger_p = find("dragon_dagger_p")
     val dragon_dagger_p_plus = find("dragon_dagger_p+")

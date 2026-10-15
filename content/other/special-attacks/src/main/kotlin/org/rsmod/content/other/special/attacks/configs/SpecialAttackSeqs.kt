@@ -28,6 +28,7 @@ object SpecialAttackSeqs : SeqReferences() {
     val dragon_mace = find("shatter")
     val dragon_warhammer = find("dragon_warhammer_sa_player")
     val dragon_claws = find("human_dragon_claws_spec")
+    val dinhs_bulwark = find("human_dinhs_bulwark_bash")
     val magic_shortbow = find("snapshot")
 
     val armadyl_godsword = find("ags_special_player")

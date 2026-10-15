@@ -88,6 +88,8 @@ class CombatSpecialAttacksTest {
             assertEnergy(special_objs.dragon_claws_cr, 500)
             assertEnergy(special_objs.magic_shortbow, 550)
             assertEnergy(special_objs.magic_shortbow_i, 500)
+            assertEnergy(special_objs.dinhs_bulwark, 500)
+            assertEnergy(special_objs.dinhs_blazing_bulwark, 500)
         }
 
     @Test
