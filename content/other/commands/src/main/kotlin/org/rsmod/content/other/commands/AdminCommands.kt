@@ -6,6 +6,7 @@ import kotlin.math.max
 import kotlin.math.min
 import org.rsmod.annotations.InternalApi
 import org.rsmod.api.config.constants
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invClear
 import org.rsmod.api.player.output.MiscOutput
@@ -18,6 +19,7 @@ import org.rsmod.api.player.stat.statAdvance
 import org.rsmod.api.player.stat.statSub
 import org.rsmod.api.player.ui.PlayerInterfaceUpdates
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
@@ -77,6 +79,8 @@ constructor(
 
     private val levenshteinMetric = StringMetrics.levenshtein()
 
+    private var Player.specialAttackEnergy by intVarp(varps.sa_energy)
+
     override fun ScriptContext.startup() {
         onCommand("master", "Max out all stats", ::master)
         onCommand("reset", "Reset all stats", ::reset)
@@ -115,6 +119,7 @@ constructor(
             player.setStatLevels(level = 99)
             player.runEnergy = constants.run_max_energy
             UpdateRun.energy(player, player.runEnergy)
+            player.specialAttackEnergy = constants.sa_max_energy
         }
 
     private fun reset(cheat: Cheat) = with(cheat) { player.setStatLevels(level = 1) }
