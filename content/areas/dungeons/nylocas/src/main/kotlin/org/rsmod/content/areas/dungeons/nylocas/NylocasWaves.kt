@@ -86,7 +86,7 @@ class NylocasWaveTable(val waves: List<NylocasWave>) {
                         NylocasSpawn(
                             NylocasSize.Small,
                             NylocasStyle.Ranged,
-                            NylocasPillar.NorthWest,
+                            null,
                         ),
                     southWest =
                         NylocasSpawn(
@@ -96,6 +96,40 @@ class NylocasWaveTable(val waves: List<NylocasWave>) {
                         ),
                     eastSouth =
                         NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee, NylocasPillar.NorthEast),
+                ),
+                NylocasWave(
+                    ticksAfterPrevious = 4,
+                    westNorth =
+                        NylocasSpawn(
+                            NylocasSize.Small,
+                            NylocasStyle.Magic,
+                            NylocasPillar.SouthWest,
+                        ),
+                    southWest =
+                        NylocasSpawn(
+                            NylocasSize.Small,
+                            NylocasStyle.Melee,
+                            null
+                        ),
+                    eastSouth =
+                        NylocasSpawn(NylocasSize.Small, NylocasStyle.Ranged, NylocasPillar.NorthEast),
+                ),
+                NylocasWave(
+                    ticksAfterPrevious = 4,
+                    westNorth =
+                        NylocasSpawn(
+                            NylocasSize.Small,
+                            NylocasStyle.Melee,
+                            NylocasPillar.SouthWest,
+                        ),
+                    southWest =
+                        NylocasSpawn(
+                            NylocasSize.Small,
+                            NylocasStyle.Ranged,
+                            NylocasPillar.SouthWest,
+                        ),
+                    eastSouth =
+                        NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic, null),
                 )
             )
         )
