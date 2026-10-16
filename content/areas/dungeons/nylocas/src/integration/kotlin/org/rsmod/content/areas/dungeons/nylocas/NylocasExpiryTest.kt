@@ -6,6 +6,7 @@ import net.rsprot.protocol.game.outgoing.zone.payload.MapAnim
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.EnumSource
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.queues
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
@@ -299,6 +300,8 @@ class NylocasExpiryTest {
         advance()
         deps.raid.start(player)
         player.opLoc1(barrier.copy(coords = room.normal[barrier.coords]))
+        advance()
+        player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
         advance(ticks = 5)
         player.telejump(room.normal[NylocasRoom.bridge])
         return room

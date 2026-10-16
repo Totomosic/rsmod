@@ -2,6 +2,8 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
+import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.testing.GameTestState
@@ -88,11 +90,11 @@ class BloatExitTest {
 
             player.opLoc1(source.copy(coords = room.normal[source.coords]))
             advanceUntil(
-                predicate = {
-                    deps.regions.normalizeCoords(player.coords) == CoordGrid(3295, 4254, 0)
-                },
+                predicate = { player.ui.containsModal(interfaces.chatmenu) },
                 timeoutTicks = 64,
             )
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
             assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
             advance(ticks = 3)
             assertEquals(0, deps.npcs.count())

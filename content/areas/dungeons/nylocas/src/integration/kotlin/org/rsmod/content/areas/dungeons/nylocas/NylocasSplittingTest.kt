@@ -5,6 +5,7 @@ import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.npc.queueDeath
 import org.rsmod.api.registry.region.RegionRegistry
@@ -232,6 +233,8 @@ class NylocasSplittingTest {
         advance()
         deps.raid.start(player)
         player.opLoc1(barrier.copy(coords = room.normal[barrier.coords]))
+        advance()
+        player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
         advance(ticks = 5)
         player.telejump(room.normal[NylocasRoom.bridge])
         return room

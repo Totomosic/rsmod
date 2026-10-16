@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
+import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
@@ -19,6 +21,185 @@ class NylocasEncounterTest {
     class Dependencies
     @Inject
     constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
+
+    @Test
+    fun GameTestState.`entry waits for confirmation before starting the four tick countdown`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            val outside = room.normal[CoordGrid(3295, 4256, 0)]
+            player.telejump(outside)
+            advance()
+            deps.raid.start(player)
+
+            player.opLoc1(barrier)
+            advance(ticks = 10)
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+            assertEquals(outside, player.coords)
+            assertEquals(0, player.vars[tob_varbits.progress_type])
+            assertEquals(0, deps.npcs.count())
+
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
+            assertFalse(player.ui.containsModal(interfaces.chatmenu))
+            assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
+            assertEquals(1, player.vars[tob_varbits.progress_type])
+            advance(ticks = 3)
+            assertEquals(0, deps.npcs.count())
+            advance()
+            assertEquals(3, deps.npcs.count())
+        }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `cancel or walking away closes the prompt without starting the room`(
+        walkAway: Boolean,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            advance()
+            deps.raid.start(player)
+            player.opLoc1(barrier)
+            advance()
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+
+            if (walkAway) {
+                player.moveGameClick(room.normal[NylocasRoom.bridge])
+            } else {
+                player.resumePauseButton(components.chatmenu_pbutton, sub = 2)
+            }
+            advance()
+            assertFalse(player.ui.containsModal(interfaces.chatmenu))
+            // A stale keypress cannot enter after cancelling.
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance(ticks = 8)
+            assertTrue(deps.regions.normalizeCoords(player.coords).z >= 4256)
+            assertEquals(0, player.vars[tob_varbits.progress_type])
+            assertEquals(0, deps.npcs.count())
+
+            // Cancelling does not prevent a fresh attempt.
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            advance()
+            player.opLoc1(barrier)
+            advance()
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
+            assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
+        }
+
+    @ParameterizedTest
+    @CsvSource(
+        "false, false, false",
+        "true, false, false",
+        "false, true, false",
+        "false, false, true",
+        "true, false, true",
+    )
+    fun `one confirmation brings both waiting players through on the same tick`(
+        otherConfirms: Boolean,
+        bothConfirm: Boolean,
+        sameBarrier: Boolean,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val west = placeBarrier(room)
+            val otherX = if (sameBarrier) 3295 else 3296
+            val otherBarrier = placeBarrier(room, x = otherX)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            val other = registerPlayer(coords = room.normal[CoordGrid(otherX, 4256, 0)])
+            val bystander = registerPlayer(coords = room.normal[NylocasRoom.bridge])
+            advance()
+            deps.raid.start(player)
+            player.enableRun()
+            other.enableRun()
+            player.opLoc1(west)
+            other.opLoc1(otherBarrier)
+            advance(ticks = 6)
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+            assertTrue(other.ui.containsModal(interfaces.chatmenu))
+            assertEquals(0, deps.npcs.count())
+
+            val confirming = if (otherConfirms) other else player
+            confirming.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            if (bothConfirm) other.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
+
+            for ((member, x) in listOf(player to 3295, other to otherX)) {
+                assertEquals(CoordGrid(x, 4254, 0), deps.regions.normalizeCoords(member.coords))
+                assertEquals(
+                    CoordGrid(x, 4256, 0),
+                    deps.regions.normalizeCoords(member.previousCoords),
+                )
+                assertFalse(member.ui.containsModal(interfaces.chatmenu))
+                assertEquals(MoveSpeed.Walk, member.moveSpeed)
+                assertTrue(member.isDelayed)
+            }
+            assertEquals(room.normal[NylocasRoom.bridge], bystander.coords)
+            advance()
+            assertFalse(player.isDelayed)
+            assertFalse(other.isDelayed)
+            advance(ticks = 2)
+            assertEquals(0, deps.npcs.count())
+            advance()
+            assertEquals(3, deps.npcs.count())
+        }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["option", "walk", "close", "logout"])
+    fun `players who cancel are excluded when a teammate confirms`(
+        cancellation: String,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            val other = registerPlayer(coords = room.normal[CoordGrid(3296, 4256, 0)])
+            advance()
+            deps.raid.start(player)
+            player.opLoc1(barrier)
+            other.opLoc1(placeBarrier(room, x = 3296))
+            advance()
+
+            when (cancellation) {
+                "option" -> other.resumePauseButton(components.chatmenu_pbutton, sub = 2)
+                "walk" -> other.moveGameClick(room.normal[NylocasRoom.bridge])
+                "close" -> other.ifClose()
+                "logout" -> unregisterPlayer(other)
+            }
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
+            assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
+            assertTrue(deps.regions.normalizeCoords(other.coords).z >= 4256)
+            advance(ticks = 4)
+            assertEquals(3, deps.npcs.count())
+        }
 
     @ParameterizedTest
     @CsvSource("3295, 4256, 4254", "3296, 4256, 4254", "3295, 4254, 4256", "3296, 4254, 4256")
@@ -42,6 +223,10 @@ class NylocasEncounterTest {
             deps.raid.start(player)
 
             player.opLoc1(barrier)
+            if (startZ > 4255) {
+                advance()
+                player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            }
             advance()
 
             assertEquals(CoordGrid(x, endZ, 0), deps.regions.normalizeCoords(player.coords))
@@ -71,6 +256,8 @@ class NylocasEncounterTest {
             advance()
             deps.raid.start(player)
             player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance(ticks = 5)
 
             assertEquals(3, deps.npcs.count())
@@ -101,6 +288,8 @@ class NylocasEncounterTest {
             deps.raid.start(player)
             player.opLoc1(barrier)
             advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
             others.forEach(::unregisterPlayer)
             advance(ticks = 4)
 
@@ -124,6 +313,8 @@ class NylocasEncounterTest {
             deps.raid.start(player)
 
             player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance()
             assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
             assertEquals(0, deps.npcs.count())
@@ -165,8 +356,12 @@ class NylocasEncounterTest {
             deps.raid.start(player)
             player.opLoc1(west)
             advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
             other.opLoc1(east)
             advance()
+            assertFalse(other.ui.containsModal(interfaces.chatmenu))
+            assertEquals(CoordGrid(3296, 4254, 0), deps.regions.normalizeCoords(other.coords))
             unregisterPlayer(player)
             advance(ticks = 2)
             assertEquals(0, deps.npcs.count())
@@ -175,9 +370,11 @@ class NylocasEncounterTest {
 
             // Passing out and back in after the wave must not start a second one.
             other.opLoc1(east)
-            advance()
+            advance(ticks = 2)
             other.opLoc1(east)
             advance(ticks = 10)
+            assertFalse(other.ui.containsModal(interfaces.chatmenu))
+            assertEquals(CoordGrid(3296, 4254, 0), deps.regions.normalizeCoords(other.coords))
             assertEquals(3, deps.npcs.count())
         }
 
@@ -201,8 +398,13 @@ class NylocasEncounterTest {
             deps.raid.start(player)
             deps.raid.start(other)
             player.opLoc1(firstBarrier)
-            advance(ticks = 2)
             other.opLoc1(secondBarrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance(ticks = 2)
+            assertTrue(other.ui.containsModal(interfaces.chatmenu))
+            assertEquals(CoordGrid(3295, 4256, 0), deps.regions.normalizeCoords(other.coords))
+            other.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance(ticks = 2)
             assertEquals(0, deps.npcs.count())
             advance()
@@ -231,6 +433,8 @@ class NylocasEncounterTest {
             advance()
             deps.raid.start(player)
             player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance()
 
             player.telejump(CoordGrid(3222, 3218, 0))
@@ -301,6 +505,8 @@ class NylocasEncounterTest {
             assertEquals(0, deps.npcs.count())
             assertEquals(0, player.vars[tob_varbits.progress_type])
             player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance()
             assertEquals(1, player.vars[tob_varbits.progress_type])
             advance(ticks = 3)

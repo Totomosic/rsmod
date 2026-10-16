@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.game.entity.Npc
@@ -70,6 +71,8 @@ class NylocasWavesTest {
             advance()
             deps.raid.start(player)
             player.opLoc1(barrier.copy(coords = room.normal[barrier.coords]))
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance(ticks = 5)
             // Occupy the instance without combat damage or incidental player collision.
             player.telejump(room.normal[NylocasRoom.bridge])

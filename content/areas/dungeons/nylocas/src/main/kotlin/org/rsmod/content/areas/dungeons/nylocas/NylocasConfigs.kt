@@ -3,6 +3,7 @@ package org.rsmod.content.areas.dungeons.nylocas
 import org.rsmod.api.type.refs.interf.InterfaceReferences
 import org.rsmod.api.type.refs.loc.LocReferences
 import org.rsmod.api.type.refs.npc.NpcReferences
+import org.rsmod.api.type.refs.queue.QueueReferences
 import org.rsmod.api.type.refs.seq.SeqReferences
 import org.rsmod.api.type.refs.spot.SpotanimReferences
 import org.rsmod.api.type.refs.varbit.VarBitReferences
@@ -10,6 +11,10 @@ import org.rsmod.api.type.refs.varbit.VarBitReferences
 object nylocas_locs : LocReferences() {
     val barrier = find("tob_arena_barrier")
     val passage = find("tob_dungeon_walkway_exit_clickbox")
+}
+
+object nylocas_queues : QueueReferences() {
+    val enter = find("nylocas_enter")
 }
 
 object nylocas_npcs : NpcReferences() {

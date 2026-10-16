@@ -5,6 +5,7 @@ import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.testing.GameTestState
@@ -196,6 +197,9 @@ class NylocasStallTest {
             deps.raid.start(other)
             player.opLoc1(source.copy(coords = first.normal[source.coords]))
             other.opLoc1(source.copy(coords = second.normal[source.coords]))
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            other.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance(ticks = 5)
             player.telejump(first.normal[NylocasRoom.bridge])
             other.telejump(second.normal[NylocasRoom.bridge])
@@ -257,6 +261,8 @@ class NylocasStallTest {
         advance()
         deps.raid.start(player)
         player.opLoc1(source.copy(coords = room.normal[source.coords]))
+        advance()
+        player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
         advance(ticks = 5)
         player.telejump(room.normal[NylocasRoom.bridge])
         return room

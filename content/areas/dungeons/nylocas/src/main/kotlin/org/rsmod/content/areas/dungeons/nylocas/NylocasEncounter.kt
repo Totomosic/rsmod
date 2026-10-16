@@ -3,17 +3,22 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.ui.ifClose
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpLoc1
+import org.rsmod.api.script.onPlayerQueueWithArgs
+import org.rsmod.events.EventBus
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
+import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.npc.NpcTypeList
+import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -28,11 +33,20 @@ constructor(
     private val raid: TheatreRaid,
     private val waves: NylocasWaveTable,
     private val behaviour: NylocasBehaviour,
+    private val eventBus: EventBus,
 ) : PluginScript() {
     private val encounters = mutableMapOf<Int, Encounter>()
+    private val pendingEntries = mutableMapOf<Player, PendingEntry>()
 
     override fun ScriptContext.startup() {
         onOpLoc1(nylocas_locs.barrier) { pass(it.loc) }
+        onPlayerQueueWithArgs<PendingEntry>(nylocas_queues.enter) {
+            val entry = it.args
+            if (player.coords == entry.origin && raid.isStarted(player, entry.region)) {
+                teleport(entry.destination)
+                delay(1)
+            }
+        }
         onEvent<GameLifecycle.StartCycle> { processEncounters() }
         behaviour.register(this)
     }
@@ -49,8 +63,12 @@ constructor(
             mes("Click Start Raid before passing the Nylocas barrier.")
             return
         }
+        val destination = region.normal[source.translateZ(if (entering) -1 else 1)]
+        if (entering && region.uid !in encounters && !confirmEntry(region, destination)) {
+            return
+        }
         // Nearby teleports interpolate as walking while bypassing the barrier's collision.
-        teleport(region.normal[source.translateZ(if (entering) -1 else 1)])
+        teleport(destination)
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
@@ -61,8 +79,37 @@ constructor(
                     teamSize = raid.teamSize(region),
                 )
             }
+            enterWaitingPlayers(region)
         }
         delay(1)
+    }
+
+    private suspend fun ProtectedAccess.confirmEntry(
+        region: Region,
+        destination: CoordGrid,
+    ): Boolean {
+        val entry = PendingEntry(region, player.coords, destination)
+        pendingEntries[player] = entry
+        val confirmed =
+            try {
+                choice2("Enter", true, "Cancel", false, title = "Start the Nylocas encounter?")
+            } finally {
+                // Walking, closing the dialogue, and logging out cancel the suspended script.
+                pendingEntries.remove(player, entry)
+            }
+        return confirmed && player.coords == entry.origin && raid.isStarted(player, region)
+    }
+
+    private fun enterWaitingPlayers(region: Region) {
+        // Closing each dialogue removes its entry, so iterate over a snapshot.
+        val waiting = pendingEntries.filterValues { it.region.uid == region.uid }
+        for ((player, entry) in waiting) {
+            if (player.coords != entry.origin || !raid.isStarted(player, region)) continue
+            player.ifClose(eventBus)
+            // Run after every player's input has updated their clock and previous coordinates.
+            // A one-cycle queue runs in this tick's player processing phase.
+            player.queue(nylocas_queues.enter, cycles = 1, args = entry)
+        }
     }
 
     private fun processEncounters() {
@@ -117,6 +164,12 @@ constructor(
         npcRepo.add(npc, Int.MAX_VALUE)
         npc.respawns = false
     }
+
+    private class PendingEntry(
+        val region: Region,
+        val origin: CoordGrid,
+        val destination: CoordGrid,
+    )
 
     private class Encounter(
         val region: Region,

@@ -206,6 +206,8 @@ class TheatreRaidTest {
             deps.raid.start(player)
             player.opLoc1(barrier)
             advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
             assertEquals(1, player.vars[tob_varbits.progress_type])
             advance(ticks = 3)
             assertEquals(0, deps.npcs.count())

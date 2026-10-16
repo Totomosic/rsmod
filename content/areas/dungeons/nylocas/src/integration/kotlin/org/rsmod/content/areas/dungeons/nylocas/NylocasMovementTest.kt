@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.EnumSource
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.PlayerHitScript
@@ -709,6 +710,8 @@ class NylocasMovementTest {
         advance()
         deps.raid.start(player)
         player.opLoc1(source.copy(coords = room.normal[source.coords]))
+        advance()
+        player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
         advance(ticks = 5)
         return room
     }

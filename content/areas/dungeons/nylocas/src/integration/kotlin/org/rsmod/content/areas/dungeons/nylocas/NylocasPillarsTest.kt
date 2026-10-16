@@ -2,6 +2,7 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
+import org.rsmod.api.config.refs.components
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.game.client.ClientCycle
@@ -46,6 +47,10 @@ class NylocasPillarsTest {
                     }
                 }
             player.opLoc1(source.copy(coords = room.normal[source.coords]))
+            advance()
+            assertEquals(0, deps.npcs.count())
+            updates.clear()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
             advance()
 
             assertEquals(1, updates.single().first)
