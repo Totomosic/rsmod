@@ -39,6 +39,50 @@ class NylocasOccupancyTest {
     )
 
     @Test
+    fun GameTestState.`a full encounter leaves no NPC collision on empty tiles during expiry`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            NylocasPillars::class,
+        ) { deps ->
+            val room = start(deps)
+            assertEquals(3, deps.npcs.count { it.id in 8342..8353 })
+            assertEquals(4, deps.npcs.count { it.id == 8358 })
+            val tiles =
+                (3280..3311).flatMap { x ->
+                    (4232..4255).map { z -> room.normal[CoordGrid(x, z, 0)] }
+                }
+            repeat(900) { tick ->
+                val occupied = buildSet {
+                    for (npc in deps.npcs) {
+                        for (x in 0 until npc.collisionSize) {
+                            for (z in 0 until npc.collisionSize) add(npc.coords.translate(x, z))
+                        }
+                    }
+                }
+                val stale =
+                    tiles.filter {
+                        it !in occupied && deps.collision[it] and CollisionFlag.BLOCK_NPCS != 0
+                    }
+                assertTrue(stale.isEmpty()) {
+                    "Empty tiles retain NPC collision at tick $tick: $stale"
+                }
+                if (tick == 40) {
+                    val firstBig = deps.npcs.single { it.id in 8342..8353 && it.size == 2 }
+                    val pillar =
+                        NpcAvatar(2).apply { coords = room.normal[NylocasPillar.SouthWest.source] }
+                    assertTrue(deps.bounds.touches(firstBig.avatar, pillar))
+                }
+                advance()
+            }
+            assertEquals(31, player.vars[tob_varbits.progress_value])
+            assertEquals(0, deps.npcs.count { it.id in 8342..8353 })
+            assertEquals(4, deps.npcs.count { it.id == 8358 })
+        }
+
+    @Test
     fun GameTestState.`a lane big reserves only its southwest tile and moves that reservation`() =
         runInjectedGameTest(
             Dependencies::class,

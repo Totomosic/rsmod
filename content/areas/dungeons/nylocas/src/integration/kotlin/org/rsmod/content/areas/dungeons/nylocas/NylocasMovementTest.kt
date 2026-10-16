@@ -46,6 +46,42 @@ class NylocasMovementTest {
     @ParameterizedTest
     @CsvSource(
         "SouthWest, Small",
+        "SouthWest, Big",
+        "NorthWest, Small",
+        "NorthWest, Big",
+        "SouthEast, Small",
+        "SouthEast, Big",
+        "NorthEast, Small",
+        "NorthEast, Big",
+    )
+    fun `an arrival reaches an empty pillar with the real support NPCs present`(
+        pillar: NylocasPillar,
+        size: NylocasSize,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(size, NylocasStyle.Magic, pillar)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(NylocasWave(4, southWest = spawn)),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            NylocasPillars::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 35)
+            assertEquals(4, deps.npcs.count { it.id == 8358 })
+            val npc = deps.npcs.single { it.id in 8342..8353 }
+            val target = NpcAvatar(2).apply { coords = room.normal[pillar.source] }
+            assertTrue(deps.bounds.touches(npc.avatar, target)) {
+                "$size stopped at ${deps.regions.normalizeCoords(npc.coords)} beside $pillar"
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "SouthWest, Small",
         "NorthWest, Small",
         "SouthEast, Small",
         "NorthEast, Small",
@@ -122,6 +158,39 @@ class NylocasMovementTest {
             advance(ticks = 6)
             assertEquals(freed, waiting.coords)
             assertEquals(tiles, deps.npcs.map { it.coords }.toSet())
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(NylocasPillar::class)
+    fun `a waiting nylo takes the vacancy left by natural expiry`(
+        pillar: NylocasPillar,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee, pillar)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(4, westNorth = spawn),
+                NylocasWave(1, westNorth = spawn),
+                NylocasWave(1, westNorth = spawn),
+                NylocasWave(1, westNorth = spawn),
+                NylocasWave(16, westNorth = spawn),
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val oldest = deps.npcs.single()
+            advance(ticks = 43)
+            val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
+            assertEquals(4, deps.npcs.count { it.coords in tiles })
+            val waiting = deps.npcs.single { it.coords !in tiles }
+            advanceUntil(predicate = { !oldest.isSlotAssigned }, timeoutTicks = 12)
+            advance(ticks = 6)
+            assertTrue(waiting.isSlotAssigned)
+            assertTrue(waiting.coords in tiles)
         }
     }
 

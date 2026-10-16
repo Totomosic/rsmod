@@ -39,6 +39,9 @@ constructor(private val npcTypes: NpcTypeList, private val npcs: NpcRepository) 
         val supports =
             NylocasPillar.entries.map { pillar ->
                 Npc(npcTypes[nylocas_npcs.support], region.normal[pillar.source]).apply {
+                    // The native NPC is size three, but pillar scenery/contact is 2x2.
+                    // Its extra north/east reservations otherwise block the inward faces.
+                    collisionSize = 2
                     mode = NpcMode.None
                     moveRestrict = MoveRestrict.NoMove
                     setHunt(0)
