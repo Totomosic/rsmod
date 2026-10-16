@@ -16,6 +16,7 @@ import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.api.script.onPlayerLogout
 import org.rsmod.events.EventBus
+import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.region.Region
@@ -31,6 +32,7 @@ constructor(
     private val regions: RegionRegistry,
     private val players: PlayerList,
     private val eventBus: EventBus,
+    private val clock: MapClock,
 ) : PluginScript() {
     private val raids = mutableMapOf<Int, Raid>()
 
@@ -59,7 +61,8 @@ constructor(
             player.mes("The Theatre of Blood supports up to five players per raid.")
             return
         }
-        val raid = Raid(region, members)
+        // Establish the instance's four-tick wave phase before anyone passes the barrier.
+        val raid = Raid(region, members, wavePhase = clock % 4)
         raids[region.uid] = raid
         sync(raid)
         player.mes("Raid started. Pass the Nylocas barrier to begin the first wave.")
@@ -70,6 +73,9 @@ constructor(
 
     fun teamSize(region: Region): Int =
         checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.teamSize
+
+    fun wavePhase(region: Region): Int =
+        checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.wavePhase
 
     fun beginRoom(region: Region) {
         val raid = raids[region.uid] ?: return
@@ -171,6 +177,7 @@ constructor(
     private class Raid(
         val region: Region,
         val members: MutableList<Player>,
+        val wavePhase: Int,
         var names: List<String>? = null,
         var progressType: Int = 0,
         var progressValue: Int = 0,

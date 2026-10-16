@@ -80,6 +80,11 @@ class GameServerCachePacker : CliktCommand(name = "cache-pack") {
         if (resolved) {
             enrichGameCache(injector)
             copyGameCache(injector)
+            // Resource-only edits (such as map areas) do not require a config
+            // identity update. Always pack them into the final game/js5 caches.
+            updateCaches(injector)
+            // enrichGameCache already closed the game cache handle.
+            injector.getInstance(Key.get(Cache::class.java, EnrichedCache::class.java)).close()
         }
     }
 

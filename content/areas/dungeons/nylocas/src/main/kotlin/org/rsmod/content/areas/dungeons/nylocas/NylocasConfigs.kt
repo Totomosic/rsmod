@@ -3,6 +3,8 @@ package org.rsmod.content.areas.dungeons.nylocas
 import org.rsmod.api.type.refs.interf.InterfaceReferences
 import org.rsmod.api.type.refs.loc.LocReferences
 import org.rsmod.api.type.refs.npc.NpcReferences
+import org.rsmod.api.type.refs.seq.SeqReferences
+import org.rsmod.api.type.refs.spot.SpotanimReferences
 import org.rsmod.api.type.refs.varbit.VarBitReferences
 
 object nylocas_locs : LocReferences() {
@@ -39,6 +41,35 @@ object nylocas_npcs : NpcReferences() {
                 if (size == NylocasSize.Small) small_fighting_ranged else big_fighting_ranged
             NylocasStyle.Magic ->
                 if (size == NylocasSize.Small) small_fighting_magic else big_fighting_magic
+        }
+}
+
+object nylocas_seqs : SeqReferences() {
+    val magic_death = find("top_spider_magic_death")
+    val ranged_death = find("top_spider_ranged_death")
+    val melee_death = find("top_spider_melee_death")
+    val magic_detonate = find("top_spider_magic_death_detonate")
+    val ranged_detonate = find("top_spider_ranged_death_detonate")
+    val melee_detonate = find("top_spider_melee_death_detonate")
+
+    fun expiry(size: NylocasSize, style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> if (size == NylocasSize.Small) melee_death else melee_detonate
+            NylocasStyle.Ranged -> if (size == NylocasSize.Small) ranged_death else ranged_detonate
+            NylocasStyle.Magic -> if (size == NylocasSize.Small) magic_death else magic_detonate
+        }
+}
+
+object nylocas_spots : SpotanimReferences() {
+    val melee_detonate = find("tob_nylocas_death_melee_detonate")
+    val ranged_detonate = find("tob_nylocas_death_ranged_detonate")
+    val magic_detonate = find("tob_nylocas_death_magic_detonate")
+
+    fun explosion(style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> melee_detonate
+            NylocasStyle.Ranged -> ranged_detonate
+            NylocasStyle.Magic -> magic_detonate
         }
 }
 

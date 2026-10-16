@@ -10,6 +10,8 @@ import org.rsmod.api.player.hit.queueHit
 import org.rsmod.api.player.isValidTarget
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.registry.region.RegionRegistry
+import org.rsmod.api.repo.npc.NpcRepository
+import org.rsmod.api.repo.world.WorldRepository
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.route.RouteFactory
@@ -21,6 +23,7 @@ import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.PathingEntityAvatar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
@@ -48,6 +51,8 @@ constructor(
     private val maxHits: MaxHitFormulae,
     private val random: GameRandom,
     private val clock: MapClock,
+    private val npcRepo: NpcRepository,
+    private val world: WorldRepository,
 ) {
     private val active = mutableMapOf<Npc, State>()
 
@@ -62,24 +67,86 @@ constructor(
         }
 
     fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn) {
-        val pillar = spawn.pillar?.let { NpcAvatar(3).apply { coords = region.normal[it.source] } }
+        val pillar = spawn.pillar?.let { NpcAvatar(2).apply { coords = region.normal[it.source] } }
         val tiles = spawn.pillar?.let { pillarTiles(region, it, npc.size) }.orEmpty()
-        active[npc] = State(region, region.normal[slot.entry], spawn, pillar, tiles, clock.cycle)
+        // Wave 9's west small shares the big's south lane despite its separate table slot.
+        val entry = slot.entry.translateZ(spawn.source(slot).z - slot.source.z)
+        active[npc] = State(region, region.normal[entry], spawn, pillar, tiles, clock.cycle)
         npc.defaultMoveSpeed = MoveSpeed.Walk
         // The incoming lanes are blocked terrain. Only the straight scripted approach uses it.
         npc.moveRestrict = MoveRestrict.BlockedNormal
         npc.aiTimer(1)
     }
 
-    fun prune() {
-        active.entries.removeIf { (npc, state) ->
-            !npc.isSlotAssigned || npc.hitpoints <= 0 || state.region.slot == Region.INVALID_SLOT
+    fun processLifetimes() {
+        // Run independently of AI timers: expiry must continue while an NPC is delayed
+        // and after the final wave, including the positive-HP explosion animation.
+        val iterator = active.entries.iterator()
+        while (iterator.hasNext()) {
+            val (npc, state) = iterator.next()
+            if (!npc.isSlotAssigned || state.region.slot == Region.INVALID_SLOT) {
+                iterator.remove()
+                continue
+            }
+            val age = clock.cycle - state.spawnCycle
+            if (state.expiring) {
+                if (age >= state.spawn.size.expiryRemovalAge) {
+                    explode(npc, state)
+                    npcRepo.del(npc, Int.MAX_VALUE)
+                    iterator.remove()
+                }
+                continue
+            }
+            if (npc.hitpoints <= 0 || queues.death in npc.queueList) {
+                // A player kill follows its own death sequence, never a later expiry.
+                iterator.remove()
+                continue
+            }
+            if (age >= state.spawn.size.expiryAnimationAge) {
+                state.expiring = true
+                npc.cancelActiveCoroutine()
+                npc.noneMode()
+                npc.hideAllOps()
+                npc.queueList.clear()
+                npc.aiTimer(0)
+                // Preserve HP, but reject new attacks and queued hits until removal.
+                npc.delay = state.spawnCycle + state.spawn.size.expiryRemovalAge + 1
+                npc.resetAnim()
+                npc.anim(nylocas_seqs.expiry(state.spawn.size, state.style))
+            }
+        }
+    }
+
+    private fun explode(npc: Npc, state: State) {
+        if (state.spawn.size == NylocasSize.Small) {
+            // The small's main explosion survives the NPC as a map effect.
+            world.spotanimMap(nylocas_spots.explosion(state.style), npc.coords)
+        }
+        // Provisional combat model, pending recording-backed damage measurements:
+        // a uniform 0..18/21 typeless roll, once at removal, within one tile of the
+        // NPC's footprint (including diagonals). Protection prayers do not reduce it.
+        val maxHit = if (state.spawn.size == NylocasSize.Small) 18 else 21
+        for (player in players) {
+            if (!validTarget(player, state.region) || player.coords.level != npc.coords.level)
+                continue
+            val inBlast =
+                player.coords.x in
+                    npc.coords.x - EXPLOSION_RADIUS until
+                        npc.coords.x + npc.size + EXPLOSION_RADIUS &&
+                    player.coords.z in
+                        npc.coords.z - EXPLOSION_RADIUS until
+                            npc.coords.z + npc.size + EXPLOSION_RADIUS
+            // Player queues process later in this cycle; one is their minimum delay.
+            if (inBlast) player.queueHit(npc, 1, HitType.Typeless, random.of(0..maxHit))
         }
     }
 
     private fun tick(npc: Npc) {
         val state = active[npc] ?: return
-        if (npc.hitpoints <= 0 || !npc.canProcess || clock.cycle <= state.spawnCycle) return
+        if (state.expiring || npc.hitpoints <= 0 || clock.cycle <= state.spawnCycle) return
+        state.style = state.spawn.styleAtAge(clock.cycle - state.spawnCycle)
+        updateAppearance(npc, state)
+        if (!npc.canProcess) return
         // Retaliation must not pull a nylo off its lane or assigned pillar.
         npc.queueList.removeAll(queues.com_retaliate_player)
         npc.noneMode()
@@ -90,14 +157,11 @@ constructor(
             }
             state.entered = true
             npc.moveRestrict = MoveRestrict.Normal
-            npc.transmog(
-                npcTypes[nylocas_npcs.fighting(state.spawn.size, state.spawn.style)],
-                Int.MAX_VALUE,
-            )
+            updateAppearance(npc, state)
         }
         val pillar = state.pillar
         if (pillar != null) {
-            npc.faceSquare(pillar.coords, 3, 3)
+            npc.faceSquare(pillar.coords, 2, 2)
             approachPillar(npc, state, pillar)
             return
         }
@@ -109,7 +173,7 @@ constructor(
         if (target == null) return
         npc.facePlayer(target)
         val inRange =
-            when (state.spawn.style) {
+            when (state.style) {
                 NylocasStyle.Melee -> bounds.touches(npc.avatar, target.avatar)
                 else ->
                     npc.isWithinDistance(target, 4) &&
@@ -121,19 +185,31 @@ constructor(
             return
         }
         if (clock.cycle < state.nextAttack) return
-        attack(npc, target, state.spawn.style)
+        attack(npc, target, state.style)
         state.nextAttack = clock.cycle + npc.visType.param(params.attackrate).coerceAtLeast(1)
+    }
+
+    private fun updateAppearance(npc: Npc, state: State) {
+        // The cache's "fighting" forms are player aggros. Pillar attackers retain
+        // ordinary IDs, including after entering the arena and during style swaps.
+        val type =
+            if (state.entered && state.pillar == null) {
+                nylocas_npcs.fighting(state.spawn.size, state.style)
+            } else {
+                nylocas_npcs.incoming(state.spawn.size, state.style)
+            }
+        if (npc.visType.id != type.id) npc.transmog(npcTypes[type], Int.MAX_VALUE)
     }
 
     private fun pillarTiles(region: Region, pillar: NylocasPillar, size: Int): List<CoordGrid> {
         // The room exposes two walkable tiles on each of the pillar's two inward-facing sides.
         val source = pillar.source
         val candidates = buildList {
-            for (offset in 1 - size until 3) {
+            for (offset in 1 - size until 2) {
                 add(source.translate(-size, offset))
-                add(source.translate(3, offset))
+                add(source.translate(2, offset))
                 add(source.translate(offset, -size))
-                add(source.translate(offset, 3))
+                add(source.translate(offset, 2))
             }
         }
         return candidates
@@ -262,10 +338,12 @@ constructor(
         val pillar: NpcAvatar?,
         val pillarTiles: List<CoordGrid>,
         val spawnCycle: Int,
+        var style: NylocasStyle = spawn.style,
         var entered: Boolean = false,
         var target: Player? = null,
         var nextAttack: Int = 0,
         var waitingReturn: CoordGrid? = null,
+        var expiring: Boolean = false,
     )
 
     private object PillarCollision : CollisionStrategy {
@@ -274,6 +352,7 @@ constructor(
     }
 
     private companion object {
+        const val EXPLOSION_RADIUS = 1
         const val TERRAIN_BLOCKERS =
             CollisionFlag.LOC or
                 CollisionFlag.BLOCK_WALK or

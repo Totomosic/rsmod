@@ -9,6 +9,7 @@ import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.region.Region
@@ -22,6 +23,7 @@ constructor(
     private val regions: RegionRegistry,
     private val npcRepo: NpcRepository,
     private val npcTypes: NpcTypeList,
+    private val npcs: NpcList,
     private val clock: MapClock,
     private val raid: TheatreRaid,
     private val waves: NylocasWaveTable,
@@ -51,9 +53,10 @@ constructor(
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
+                val earliest = clock + waves.waves.first().ticksAfterPrevious
                 Encounter(
                     region,
-                    waveCycle = clock + waves.waves.first().ticksAfterPrevious,
+                    waveCycle = earliest + Math.floorMod(raid.wavePhase(region) - earliest, 4),
                     teamSize = raid.teamSize(region),
                 )
             }
@@ -61,7 +64,7 @@ constructor(
     }
 
     private fun processEncounters() {
-        behaviour.prune()
+        behaviour.processLifetimes()
         val iterator = encounters.values.iterator()
         while (iterator.hasNext()) {
             val encounter = iterator.next()
@@ -76,6 +79,19 @@ constructor(
             ) {
                 continue
             }
+            // waveIndex counts waves already spawned: wave 20 must pass the old
+            // cap before raising it. Count bodies through removal, regardless of HP.
+            val cap = if (encounter.waveIndex < 20) 12 else 24
+            val population =
+                npcs.count { npc ->
+                    npc.id in 8342..8353 && regions[npc.coords]?.uid == encounter.region.uid
+                }
+            if (population >= cap) {
+                encounter.waveCycle = clock + 4
+                continue
+            }
+            // Admission checks the existing population once, so a whole batch may
+            // overshoot the cap. A stall never advances the wave or its HUD value.
             for ((slot, spawn) in waves.waves[encounter.waveIndex].spawns) {
                 spawn(encounter, slot, spawn)
             }
@@ -89,7 +105,7 @@ constructor(
 
     private fun spawn(encounter: Encounter, slot: NylocasSlot, spawn: NylocasSpawn) {
         val type = nylocas_npcs.incoming(spawn.size, spawn.style)
-        val npc = Npc(npcTypes[type], encounter.region.normal[slot.source])
+        val npc = Npc(npcTypes[type], encounter.region.normal[spawn.source(slot)])
         npc.baseHitpointsLvl = spawn.size.hitpoints(encounter.teamSize)
         npc.hitpoints = npc.baseHitpointsLvl
         npc.mode = NpcMode.None

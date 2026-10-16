@@ -1,9 +1,11 @@
 package org.rsmod.content.areas.dungeons.nylocas
 
+import com.google.inject.AbstractModule
 import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
@@ -26,7 +28,7 @@ class NylocasEncounterTest {
     ) =
         state.runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -44,6 +46,7 @@ class NylocasEncounterTest {
                 assertEquals(expectedHp, npc.hitpoints)
                 assertEquals(expectedHp, npc.baseHitpointsLvl)
             }
+            player.telejump(room.normal[NylocasRoom.bridge])
             advance(ticks = 40)
             assertTrue(
                 deps.npcs.all { it.hitpoints == expectedHp && it.baseHitpointsLvl == expectedHp }
@@ -54,7 +57,7 @@ class NylocasEncounterTest {
     fun GameTestState.`departures during the countdown do not change raid HP scaling`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -77,7 +80,7 @@ class NylocasEncounterTest {
     fun GameTestState.`pass enters the arena and spawns exactly one wave four ticks later`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -98,14 +101,15 @@ class NylocasEncounterTest {
 
             assertEquals(
                 setOf(
-                    8344 to CoordGrid(3295, 4233, 0),
-                    8343 to CoordGrid(3281, 4249, 0),
-                    8342 to CoordGrid(3310, 4248, 0),
+                    8344 to CoordGrid(3296, 4233, 0),
+                    8343 to CoordGrid(3281, 4248, 0),
+                    8342 to CoordGrid(3310, 4249, 0),
                 ),
                 deps.npcs.map { it.id to deps.regions.normalizeCoords(it.coords) }.toSet(),
             )
             assertEquals(3, deps.npcs.count())
             assertTrue(deps.npcs.all { it.size == 1 && !it.respawns })
+            player.telejump(room.normal[NylocasRoom.bridge])
             advance(ticks = 40)
             assertEquals(3, deps.npcs.count())
         }
@@ -115,7 +119,7 @@ class NylocasEncounterTest {
         .`both barrier halves share one countdown independent of the starting player`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -149,7 +153,7 @@ class NylocasEncounterTest {
     fun GameTestState.`separate instances spawn their own waves`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -179,7 +183,7 @@ class NylocasEncounterTest {
     fun GameTestState.`reclaiming a room cancels pending spawns`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -203,7 +207,7 @@ class NylocasEncounterTest {
     fun GameTestState.`passing from inside only exits and does not start a wave`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -223,7 +227,7 @@ class NylocasEncounterTest {
     fun GameTestState.`the shared barrier type outside Nylocas does not start a wave`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            firstWave(),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
@@ -236,6 +240,42 @@ class NylocasEncounterTest {
 
             assertEquals(source.translateZ(1), player.coords)
             assertEquals(0, deps.npcs.count())
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2, 3])
+    fun `entry preserves the phase established before the barrier`(
+        delay: Int,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            advance()
+            deps.raid.start(player)
+            advance(ticks = delay)
+            player.opLoc1(barrier)
+            advance()
+            val countdown = 4 + Math.floorMod(-delay, 4)
+            advance(ticks = countdown - 1)
+            assertEquals(0, deps.npcs.count())
+            advance()
+            assertEquals(3, deps.npcs.count())
+        }
+
+    // These tests isolate entry/countdown/party behavior from later waves.
+    private fun firstWave(): AbstractModule =
+        object : AbstractModule() {
+            override fun configure() {
+                bind(NylocasWaveTable::class.java)
+                    .toInstance(NylocasWaveTable(NylocasWaveTable().waves.take(1)))
+            }
         }
 
     private fun GameTestScope.createRoom(): Region {

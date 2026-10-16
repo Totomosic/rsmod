@@ -91,7 +91,9 @@ class BloatExitTest {
             assertEquals(CoordGrid(3295, 4254, 0), deps.regions.normalizeCoords(player.coords))
             advance(ticks = 3)
             assertEquals(0, deps.npcs.count())
-            advance()
+            // The phase was established before walking from Bloat, so the first
+            // wave can need up to three additional ticks after the minimum delay.
+            advanceUntil(predicate = { deps.npcs.count() > 0 }, timeoutTicks = 4)
             assertEquals(3, deps.npcs.count())
         }
 

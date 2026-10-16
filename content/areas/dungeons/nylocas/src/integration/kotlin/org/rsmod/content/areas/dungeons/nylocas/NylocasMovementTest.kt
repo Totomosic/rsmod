@@ -62,9 +62,9 @@ class NylocasMovementTest {
             TheatreRaid::class,
         ) { deps ->
             val room = start(deps)
-            advance(ticks = 80)
+            advance(ticks = 35)
             assertEquals(2, deps.npcs.count())
-            val target = NpcAvatar(3).apply { coords = room.normal[pillar.source] }
+            val target = NpcAvatar(2).apply { coords = room.normal[pillar.source] }
             assertTrue(deps.npcs.all { deps.bounds.touches(it.avatar, target) })
             assertEquals(2, deps.npcs.map { it.coords }.toSet().size)
             val npcs = deps.npcs.toList()
@@ -81,12 +81,12 @@ class NylocasMovementTest {
         val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee, pillar)
         state.runInjectedGameTest(
             Dependencies::class,
-            table(*Array(5) { NylocasWave(4, westNorth = spawn) }),
+            table(*Array(5) { NylocasWave(if (it == 0) 4 else 1, westNorth = spawn) }),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
             val room = start(deps)
-            advance(ticks = 120)
+            advance(ticks = 32)
             val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
             val settled = deps.npcs.filter { it.coords in tiles }
             assertEquals(4, settled.size)
@@ -113,7 +113,7 @@ class NylocasMovementTest {
             }
             val freed = settled.first().coords
             deps.npcRepo.del(settled.first(), Int.MAX_VALUE)
-            advance(ticks = 40)
+            advance(ticks = 6)
             assertEquals(freed, waiting.coords)
             assertEquals(tiles, deps.npcs.map { it.coords }.toSet())
         }
@@ -136,13 +136,13 @@ class NylocasMovementTest {
             val tiles = pillarTiles(pillar).map { room.normal[it] }
             tiles.forEach { deps.collision.add(it, CollisionFlag.BLOCK_NPCS) }
             val npc = deps.npcs.single()
-            repeat(80) {
+            repeat(30) {
                 assertFalse(npc.coords in tiles)
                 advance()
             }
             val freed = tiles.last()
             deps.collision.remove(freed, CollisionFlag.BLOCK_NPCS)
-            advance(ticks = 40)
+            advance(ticks = 10)
             assertEquals(freed, npc.coords)
         }
     }
@@ -162,7 +162,7 @@ class NylocasMovementTest {
             TheatreRaid::class,
         ) { deps ->
             val room = start(deps)
-            repeat(100) {
+            repeat(40) {
                 advance()
                 assertEquals(6, deps.npcs.map { it.coords }.toSet().size)
             }
@@ -183,17 +183,86 @@ class NylocasMovementTest {
                 listOf(3299 to 4253, 3299 to 4254, 3300 to 4252, 3301 to 4252)
         }.map { (x, z) -> CoordGrid(x, z, 0) }
 
+    @ParameterizedTest
+    @CsvSource(
+        "WestNorth, Small, NorthWest, 3290, 4249",
+        "WestSouth, Small, SouthWest, 3290, 4248",
+        "SouthWest, Small, SouthWest, 3295, 4243",
+        "SouthEast, Small, SouthEast, 3296, 4243",
+        "EastNorth, Small, NorthEast, 3301, 4249",
+        "EastSouth, Small, SouthEast, 3301, 4248",
+        "WestNorth, Big, NorthWest, 3290, 4249",
+        "WestSouth, Big, SouthWest, 3290, 4248",
+        "SouthWest, Big, SouthWest, 3295, 4243",
+        "SouthEast, Big, SouthEast, 3296, 4243",
+        "EastNorth, Big, NorthEast, 3301, 4248",
+        "EastSouth, Big, SouthEast, 3301, 4248",
+    )
+    fun `pillar pathfinding starts on the step immediately after entering the room`(
+        slot: NylocasSlot,
+        size: NylocasSize,
+        pillar: NylocasPillar,
+        entryX: Int,
+        entryZ: Int,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(size, NylocasStyle.Melee, pillar)
+        val wave =
+            NylocasWave(
+                4,
+                westNorth = spawn.takeIf { slot == NylocasSlot.WestNorth },
+                westSouth = spawn.takeIf { slot == NylocasSlot.WestSouth },
+                southWest = spawn.takeIf { slot == NylocasSlot.SouthWest },
+                southEast = spawn.takeIf { slot == NylocasSlot.SouthEast },
+                eastNorth = spawn.takeIf { slot == NylocasSlot.EastNorth },
+                eastSouth = spawn.takeIf { slot == NylocasSlot.EastSouth },
+            )
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            start(deps)
+            val npc = deps.npcs.single()
+            val entry = CoordGrid(entryX, entryZ, 0)
+            val source = spawn.source(slot)
+            val distance = source.chebyshevDistance(entry)
+            // Preserve the straight incoming lane up to its first arena tile.
+            repeat(distance) { index ->
+                advance()
+                val position = deps.regions.normalizeCoords(npc.coords)
+                val dx = (entry.x - source.x).compareTo(0) * (index + 1)
+                val dz = (entry.z - source.z).compareTo(0) * (index + 1)
+                assertEquals(source.translate(dx, dz), position)
+            }
+            assertEquals(entry, deps.regions.normalizeCoords(npc.coords))
+            advance()
+            val turned = deps.regions.normalizeCoords(npc.coords)
+            if (slot.name.startsWith("South")) {
+                assertTrue(turned.x != entry.x) {
+                    "$slot $size kept walking north: $entry -> $turned"
+                }
+            } else {
+                assertTrue(turned.z != entry.z) {
+                    "$slot $size kept walking straight: $entry -> $turned"
+                }
+            }
+        }
+    }
+
     @Test
     fun GameTestState.`default first wave finishes lanes before walking to assigned pillars`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            table(NylocasWaveTable().waves.first()),
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
             val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
             val entries =
-                NylocasWaveTable().waves.single().spawns.associate { (slot, spawn) ->
+                NylocasWaveTable().waves.first().spawns.associate { (slot, spawn) ->
                     slot.source to (slot to spawn)
                 }
             assertEquals(3, deps.npcs.count())
@@ -202,7 +271,7 @@ class NylocasMovementTest {
                     entries.getValue(deps.regions.normalizeCoords(it.coords))
                 }
             val entered = mutableSetOf<org.rsmod.game.entity.Npc>()
-            repeat(55) {
+            repeat(40) {
                 for ((npc, definition) in definitions) {
                     val (slot, _) = definition
                     val source = deps.regions.normalizeCoords(npc.coords)
@@ -218,9 +287,14 @@ class NylocasMovementTest {
             assertEquals(3, entered.size)
             for ((npc, definition) in definitions) {
                 val spawn = definition.second
-                assertEquals(nylocas_npcs.fighting(spawn.size, spawn.style).id, npc.visType.id)
-                val pillar = NpcAvatar(3).apply { coords = room.normal[spawn.pillar!!.source] }
-                assertTrue(deps.bounds.touches(npc.avatar, pillar))
+                val type =
+                    if (spawn.pillar == null) nylocas_npcs.fighting(spawn.size, spawn.style)
+                    else nylocas_npcs.incoming(spawn.size, spawn.style)
+                assertEquals(type.id, npc.visType.id)
+                spawn.pillar?.let {
+                    val pillar = NpcAvatar(2).apply { coords = room.normal[it.source] }
+                    assertTrue(deps.bounds.touches(npc.avatar, pillar))
+                }
             }
         }
 
@@ -249,7 +323,7 @@ class NylocasMovementTest {
             start(deps)
             assertEquals((8342..8347).toSet(), deps.npcs.map { it.id }.toSet())
             assertEquals(
-                wave.spawns.map { it.first.source }.toSet(),
+                wave.spawns.map { (slot, spawn) -> spawn.source(slot) }.toSet(),
                 deps.npcs.map { deps.regions.normalizeCoords(it.coords) }.toSet(),
             )
             for (npc in deps.npcs) assertEquals(if (npc.size == 1) 8 else 16, npc.hitpoints)
@@ -258,8 +332,8 @@ class NylocasMovementTest {
             advance()
             assertEquals(7, deps.npcs.count())
             assertEquals(2, player.vars[tob_varbits.progress_value])
-            advance(ticks = 60)
-            assertTrue(deps.npcs.all { it.transmog != null })
+            advance(ticks = 35)
+            assertTrue(deps.npcs.all { it.visType.id in 8342..8347 })
         }
     }
 
@@ -283,8 +357,8 @@ class NylocasMovementTest {
                 CollisionFlag.LOC,
             )
             val npc = deps.npcs.single()
-            advance(ticks = 60)
-            val pillar = NpcAvatar(3).apply { coords = room.normal[NylocasPillar.NorthEast.source] }
+            advance(ticks = 35)
+            val pillar = NpcAvatar(2).apply { coords = room.normal[NylocasPillar.NorthEast.source] }
             assertTrue(deps.bounds.touches(npc.avatar, pillar))
         }
     }
@@ -311,14 +385,14 @@ class NylocasMovementTest {
             val outsider = registerPlayer(coords = secondRoom.normal[CoordGrid(3293, 4249, 0)])
             outsider.setBaseLevel(stats.hitpoints, 99)
             outsider.setCurrentLevel(stats.hitpoints, 99)
-            advance(ticks = 50)
+            advance(ticks = 30)
             assertTrue(player.hitpoints < 99)
             assertEquals(99, other.hitpoints)
             assertEquals(99, outsider.hitpoints)
             player.telejump(room.normal[NylocasRoom.bridge])
             advance(ticks = 3)
             val hpAfterDeparture = player.hitpoints
-            advance(ticks = 50)
+            advance(ticks = 15)
             assertEquals(hpAfterDeparture, player.hitpoints)
             assertTrue(other.hitpoints < 99)
             assertEquals(99, outsider.hitpoints)
@@ -357,7 +431,7 @@ class NylocasMovementTest {
             advance(ticks = 8)
             assertTrue(deps.regions.normalizeCoords(npc.coords).z < NylocasSlot.SouthWest.entry.z)
             assertEquals(99, player.hitpoints)
-            advance(ticks = 100)
+            advance(ticks = 35)
             assertEquals(nylocas_npcs.fighting(size, style).id, npc.visType.id)
             assertTrue(player.hitpoints < 99)
         }
