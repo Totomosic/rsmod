@@ -37,7 +37,7 @@ constructor(
         behaviour.register(this)
     }
 
-    private fun ProtectedAccess.pass(barrier: BoundLocInfo) {
+    private suspend fun ProtectedAccess.pass(barrier: BoundLocInfo) {
         val region = regions[barrier.coords] ?: return
         val source = regions.normalizeCoords(barrier.coords)
         // This barrier type is shared by other Theatre rooms. Only handle the Nylocas entrance.
@@ -49,7 +49,8 @@ constructor(
             mes("Click Start Raid before passing the Nylocas barrier.")
             return
         }
-        telejump(region.normal[source.translateZ(if (entering) -1 else 1)])
+        // Nearby teleports interpolate as walking while bypassing the barrier's collision.
+        teleport(region.normal[source.translateZ(if (entering) -1 else 1)])
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
@@ -61,6 +62,7 @@ constructor(
                 )
             }
         }
+        delay(1)
     }
 
     private fun processEncounters() {

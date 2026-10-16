@@ -6,4 +6,5 @@ typealias setting_varbits = SettingVarBits
 
 object SettingVarBits : VarBitReferences() {
     val panel_tab = find("settings_side_panel_tab", 92479944086622)
+    val hotkey_cannot_close_sidepanel = find("hotkey_cannot_close_sidepanel")
 }

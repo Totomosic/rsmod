@@ -5,6 +5,7 @@ import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.content.interfaces.settings.configs.keybind_varbits
+import org.rsmod.content.interfaces.settings.configs.setting_varbits
 import org.rsmod.game.entity.Player
 import org.rsmod.game.type.varbit.VarBitType
 import org.rsmod.plugin.scripts.PluginScript
@@ -32,6 +33,23 @@ class KeybindSettingsScript : PluginScript() {
 
     override fun ScriptContext.startup() {
         onPlayerLogin { player.initializeKeybinds() }
+        onCommand("localscape_sidepanel_hotkeys") {
+            desc = "Save whether hotkeys are prevented from closing the modern side panel"
+            cheat {
+                val cannotClose = args.singleOrNull()?.toIntOrNull()
+                if (
+                    cannotClose != null &&
+                        cannotClose in 0..1 &&
+                        player.ui.containsOverlay(interfaces.settings)
+                ) {
+                    VarPlayerIntMapSetter.set(
+                        player,
+                        setting_varbits.hotkey_cannot_close_sidepanel,
+                        cannotClose,
+                    )
+                }
+            }
+        }
         onCommand("localscape_keybind") {
             desc = "Save an in-game side-panel keybind"
             cheat {

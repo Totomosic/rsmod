@@ -11,6 +11,7 @@ import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.loc.BoundLocInfo
+import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
 
@@ -18,6 +19,37 @@ class NylocasEncounterTest {
     class Dependencies
     @Inject
     constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
+
+    @ParameterizedTest
+    @CsvSource("3295, 4256, 4254", "3296, 4256, 4254", "3295, 4254, 4256", "3296, 4254, 4256")
+    fun `barrier crossing walks with a one tick delay even when running`(
+        x: Int,
+        startZ: Int,
+        endZ: Int,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            firstWave(),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room, x)
+            player.telejump(room.normal[CoordGrid(x, startZ, 0)])
+            player.enableRun()
+            advance(ticks = 2)
+            deps.raid.start(player)
+
+            player.opLoc1(barrier)
+            advance()
+
+            assertEquals(CoordGrid(x, endZ, 0), deps.regions.normalizeCoords(player.coords))
+            assertEquals(MoveSpeed.Walk, player.moveSpeed)
+            assertTrue(player.isDelayed)
+            advance()
+            assertFalse(player.isDelayed)
+        }
 
     @ParameterizedTest
     @CsvSource("1, 8", "2, 8", "3, 8", "4, 9", "5, 11")

@@ -11,6 +11,7 @@ import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.content.interfaces.settings.configs.keybind_varbits
+import org.rsmod.content.interfaces.settings.configs.setting_varbits
 import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.game.type.varp.VarpLifetime
 
@@ -18,10 +19,55 @@ class KeybindSettingsScriptTest {
     class Dependencies @Inject constructor(val handler: ClientCheatHandler)
 
     @Test
+    fun GameTestState
+        .`side panel hotkey preference syncs and survives login and keybind changes`() =
+        runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
+            player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
+            advance(2)
+            val preference = setting_varbits.hotkey_cannot_close_sidepanel
+            deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys 1"))
+
+            assertEquals(1, player.vars[preference])
+            assertTrue(VarpLarge(preference.baseVar.id, player.vars[preference.baseVar]) in client)
+            assertEquals(VarpLifetime.Perm, preference.baseVar.scope)
+            deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
+            deps.handler.handle(player, ClientCheat("localscape_keybind_reset"))
+            eventBus.publish(SessionStateEvent.Login(player))
+            assertEquals(1, player.vars[preference])
+
+            deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys 0"))
+            eventBus.publish(SessionStateEvent.Login(player))
+            assertEquals(0, player.vars[preference])
+        }
+
+    @Test
+    fun GameTestState
+        .`side panel hotkey preference preserves packed settings and rejects invalid requests`() =
+        runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
+            val preference = setting_varbits.hotkey_cannot_close_sidepanel
+            deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys 1"))
+            assertEquals(0, player.vars[preference])
+
+            player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
+            VarPlayerIntMapSetter.set(player, varbits.keybinding_esc_to_close, 1)
+            deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys 1"))
+            deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys 1"))
+            assertEquals(1, player.vars[preference])
+            assertEquals(1, player.vars[varbits.keybinding_esc_to_close])
+            assertEquals(4, player.vars[keybind_varbits.inventory])
+
+            val original = player.vars.backing.toMap()
+            for (args in listOf("", "-1", "2", "nope", "1 0")) {
+                deps.handler.handle(player, ClientCheat("localscape_sidepanel_hotkeys $args"))
+            }
+            assertEquals(original, player.vars.backing.toMap())
+        }
+
+    @Test
     fun GameTestState.`keybind selection syncs and replaces duplicate binding`() =
         runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
             player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
-            advance()
+            advance(2)
             deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
 
             assertEquals(2, player.vars[keybind_varbits.inventory])
