@@ -6,18 +6,21 @@ import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.registry.region.RegionRegistry
+import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.map.collision.add
+import org.rsmod.game.map.collision.remove
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
@@ -32,7 +35,153 @@ class NylocasMovementTest {
         val raid: TheatreRaid,
         val bounds: BoundValidator,
         val collision: CollisionFlagMap,
+        val npcRepo: NpcRepository,
     )
+
+    @ParameterizedTest
+    @CsvSource(
+        "SouthWest, Small",
+        "NorthWest, Small",
+        "SouthEast, Small",
+        "NorthEast, Small",
+        "SouthWest, Big",
+        "NorthWest, Big",
+        "SouthEast, Big",
+        "NorthEast, Big",
+    )
+    fun `nylos arriving at the same pillar occupy separate tiles`(
+        pillar: NylocasPillar,
+        size: NylocasSize,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(size, NylocasStyle.Melee, pillar)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(NylocasWave(4, westNorth = spawn), NylocasWave(4, westNorth = spawn)),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            advance(ticks = 80)
+            assertEquals(2, deps.npcs.count())
+            val target = NpcAvatar(3).apply { coords = room.normal[pillar.source] }
+            assertTrue(deps.npcs.all { deps.bounds.touches(it.avatar, target) })
+            assertEquals(2, deps.npcs.map { it.coords }.toSet().size)
+            val npcs = deps.npcs.toList()
+            assertFalse(deps.bounds.collides(npcs[0].avatar, npcs[1].avatar))
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(NylocasPillar::class)
+    fun `a fifth nylo paces until one of the four pillar tiles is vacated`(
+        pillar: NylocasPillar,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee, pillar)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(*Array(5) { NylocasWave(4, westNorth = spawn) }),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            advance(ticks = 120)
+            val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
+            val settled = deps.npcs.filter { it.coords in tiles }
+            assertEquals(4, settled.size)
+            assertEquals(tiles, settled.map { it.coords }.toSet())
+            val waiting = deps.npcs.single { it !in settled }
+            val positions =
+                List(10) {
+                    val coords = waiting.coords
+                    assertEquals(5, deps.npcs.map { it.coords }.toSet().size)
+                    assertEquals(tiles, settled.map { it.coords }.toSet())
+                    advance()
+                    coords
+                }
+            assertEquals(2, positions.toSet().size)
+            for (i in 1 until positions.size) {
+                val previous = positions[i - 1]
+                val current = positions[i]
+                assertEquals(
+                    1,
+                    kotlin.math.abs(current.x - previous.x) +
+                        kotlin.math.abs(current.z - previous.z),
+                )
+                if (i > 1) assertEquals(positions[i - 2], current)
+            }
+            val freed = settled.first().coords
+            deps.npcRepo.del(settled.first(), Int.MAX_VALUE)
+            advance(ticks = 40)
+            assertEquals(freed, waiting.coords)
+            assertEquals(tiles, deps.npcs.map { it.coords }.toSet())
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(NylocasPillar::class)
+    fun `pillar arrivals respect occupancy flags and retry when a tile becomes free`(
+        pillar: NylocasPillar,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic, pillar)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(NylocasWave(4, westNorth = spawn)),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            val tiles = pillarTiles(pillar).map { room.normal[it] }
+            tiles.forEach { deps.collision.add(it, CollisionFlag.BLOCK_NPCS) }
+            val npc = deps.npcs.single()
+            repeat(80) {
+                assertFalse(npc.coords in tiles)
+                advance()
+            }
+            val freed = tiles.last()
+            deps.collision.remove(freed, CollisionFlag.BLOCK_NPCS)
+            advance(ticks = 40)
+            assertEquals(freed, npc.coords)
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(NylocasPillar::class)
+    fun `simultaneous arrivals from every lane fill the pillar without overlapping`(
+        pillar: NylocasPillar,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Ranged, pillar)
+        val wave = NylocasWave(4, spawn, spawn, spawn, spawn, spawn, spawn)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            repeat(100) {
+                advance()
+                assertEquals(6, deps.npcs.map { it.coords }.toSet().size)
+            }
+            val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
+            assertEquals(tiles, deps.npcs.filter { it.coords in tiles }.map { it.coords }.toSet())
+        }
+    }
+
+    private fun pillarTiles(pillar: NylocasPillar): List<CoordGrid> =
+        when (pillar) {
+            NylocasPillar.SouthWest ->
+                listOf(3290 to 4245, 3291 to 4245, 3292 to 4243, 3292 to 4244)
+            NylocasPillar.NorthWest ->
+                listOf(3290 to 4252, 3291 to 4252, 3292 to 4253, 3292 to 4254)
+            NylocasPillar.SouthEast ->
+                listOf(3299 to 4243, 3299 to 4244, 3300 to 4245, 3301 to 4245)
+            NylocasPillar.NorthEast ->
+                listOf(3299 to 4253, 3299 to 4254, 3300 to 4252, 3301 to 4252)
+        }.map { (x, z) -> CoordGrid(x, z, 0) }
 
     @Test
     fun GameTestState.`default first wave finishes lanes before walking to assigned pillars`() =

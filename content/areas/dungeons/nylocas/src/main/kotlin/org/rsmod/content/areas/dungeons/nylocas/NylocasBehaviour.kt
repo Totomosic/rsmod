@@ -13,6 +13,7 @@ import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.route.RouteFactory
+import org.rsmod.api.route.StepFactory
 import org.rsmod.api.script.onAiTimer
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
@@ -20,12 +21,17 @@ import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.PathingEntityAvatar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.map.collision.get
 import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.npc.NpcTypeList
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.ScriptContext
+import org.rsmod.routefinder.Route
+import org.rsmod.routefinder.collision.CollisionFlagMap
+import org.rsmod.routefinder.collision.CollisionStrategy
+import org.rsmod.routefinder.flag.CollisionFlag
 
 class NylocasBehaviour
 @Inject
@@ -34,6 +40,8 @@ constructor(
     private val players: PlayerList,
     private val npcTypes: NpcTypeList,
     private val routes: RouteFactory,
+    private val steps: StepFactory,
+    private val collision: CollisionFlagMap,
     private val bounds: BoundValidator,
     private val rays: RayCastValidator,
     private val accuracy: AccuracyFormulae,
@@ -55,7 +63,8 @@ constructor(
 
     fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn) {
         val pillar = spawn.pillar?.let { NpcAvatar(3).apply { coords = region.normal[it.source] } }
-        active[npc] = State(region, region.normal[slot.entry], spawn, pillar, clock.cycle)
+        val tiles = spawn.pillar?.let { pillarTiles(region, it, npc.size) }.orEmpty()
+        active[npc] = State(region, region.normal[slot.entry], spawn, pillar, tiles, clock.cycle)
         npc.defaultMoveSpeed = MoveSpeed.Walk
         // The incoming lanes are blocked terrain. Only the straight scripted approach uses it.
         npc.moveRestrict = MoveRestrict.BlockedNormal
@@ -80,8 +89,7 @@ constructor(
                 return
             }
             state.entered = true
-            // Arena pathing respects terrain and scenery while allowing nylos to stack.
-            npc.moveRestrict = MoveRestrict.PassThru
+            npc.moveRestrict = MoveRestrict.Normal
             npc.transmog(
                 npcTypes[nylocas_npcs.fighting(state.spawn.size, state.spawn.style)],
                 Int.MAX_VALUE,
@@ -90,7 +98,7 @@ constructor(
         val pillar = state.pillar
         if (pillar != null) {
             npc.faceSquare(pillar.coords, 3, 3)
-            if (!bounds.touches(npc.avatar, pillar)) route(npc, pillar)
+            approachPillar(npc, state, pillar)
             return
         }
         val candidates = players.filter { validTarget(it, state.region) }
@@ -117,6 +125,99 @@ constructor(
         state.nextAttack = clock.cycle + npc.visType.param(params.attackrate).coerceAtLeast(1)
     }
 
+    private fun pillarTiles(region: Region, pillar: NylocasPillar, size: Int): List<CoordGrid> {
+        // The room exposes two walkable tiles on each of the pillar's two inward-facing sides.
+        val source = pillar.source
+        val candidates = buildList {
+            for (offset in 1 - size until 3) {
+                add(source.translate(-size, offset))
+                add(source.translate(3, offset))
+                add(source.translate(offset, -size))
+                add(source.translate(offset, 3))
+            }
+        }
+        return candidates
+            .filter { tile ->
+                tile.x >= 3289 && tile.x + size <= 3303 && tile.z >= 4242 && tile.z + size <= 4255
+            }
+            .map { region.normal[it] }
+            .filter { tile ->
+                (0 until size).all { x ->
+                    (0 until size).all { z ->
+                        collision[tile.translate(x, z)] and TERRAIN_BLOCKERS == 0
+                    }
+                }
+            }
+    }
+
+    private fun approachPillar(npc: Npc, state: State, pillar: NpcAvatar) {
+        if (npc.coords in state.pillarTiles) return
+        val available = state.pillarTiles.filter { canOccupy(npc, it) }
+        // Ignore our own footprint during searches, but retain every other occupancy flag.
+        npc.removeBlockWalkCollision(collision, npc.coords)
+        try {
+            for (tile in available.sortedBy { npc.coords.chebyshevDistance(it) }) {
+                val route = routes.create(npc.avatar, tile, PillarCollision)
+                if (route.success) {
+                    state.waitingReturn = null
+                    follow(npc, route)
+                    return
+                }
+            }
+            if (state.waitingReturn == null) {
+                val approach = routes.create(npc.avatar, pillar, PillarCollision)
+                if (
+                    approach.isNotEmpty() &&
+                        state.pillarTiles.minOf { npc.coords.chebyshevDistance(it) } > 1
+                ) {
+                    follow(npc, approach)
+                    return
+                }
+            }
+        } finally {
+            npc.addBlockWalkCollision(collision, npc.coords)
+        }
+        pace(npc, state)
+    }
+
+    private fun canOccupy(npc: Npc, tile: CoordGrid): Boolean =
+        (0 until npc.size).all { x ->
+            (0 until npc.size).all { z ->
+                val coord = tile.translate(x, z)
+                val ownTile =
+                    coord.x in npc.coords.x until npc.coords.x + npc.size &&
+                        coord.z in npc.coords.z until npc.coords.z + npc.size
+                val blockers = TERRAIN_BLOCKERS or if (ownTile) 0 else CollisionFlag.BLOCK_NPCS
+                collision[coord] and blockers == 0
+            }
+        }
+
+    private fun pace(npc: Npc, state: State) {
+        fun canStep(tile: CoordGrid): Boolean =
+            canOccupy(npc, tile) &&
+                steps.validated(npc.coords, tile, npc.size, CollisionFlag.BLOCK_NPCS) == tile
+
+        val back = state.waitingReturn
+        if (back != null && back != npc.coords && canStep(back)) {
+            npc.walk(back)
+            return
+        }
+        state.waitingReturn = null
+        val next =
+            listOf(
+                    npc.coords.translate(-1, 0),
+                    npc.coords.translate(1, 0),
+                    npc.coords.translate(0, -1),
+                    npc.coords.translate(0, 1),
+                )
+                .sortedByDescending { tile ->
+                    state.pillarTiles.minOf { tile.chebyshevDistance(it) }
+                }
+                .firstOrNull { canStep(it) } ?: return
+        state.waitingReturn = npc.coords
+        npc.walk(next)
+    }
+
     private fun validTarget(player: Player, region: Region): Boolean {
         if (!player.isValidTarget() || regions[player.coords]?.uid != region.uid) return false
         val source = regions.normalizeCoords(player.coords)
@@ -126,6 +227,10 @@ constructor(
     private fun route(npc: Npc, target: PathingEntityAvatar) {
         val collision = npc.collisionStrategy ?: return
         val route = routes.create(npc.avatar, target, collision)
+        follow(npc, route)
+    }
+
+    private fun follow(npc: Npc, route: Route) {
         npc.moveSpeed = MoveSpeed.Walk
         for (waypoint in route) {
             npc.routeDestination.add(CoordGrid(waypoint.x, waypoint.z, waypoint.level))
@@ -155,9 +260,24 @@ constructor(
         val entry: CoordGrid,
         val spawn: NylocasSpawn,
         val pillar: NpcAvatar?,
+        val pillarTiles: List<CoordGrid>,
         val spawnCycle: Int,
         var entered: Boolean = false,
         var target: Player? = null,
         var nextAttack: Int = 0,
+        var waitingReturn: CoordGrid? = null,
     )
+
+    private object PillarCollision : CollisionStrategy {
+        override fun canMove(tileFlag: Int, blockFlag: Int): Boolean =
+            CollisionStrategy.Normal.canMove(tileFlag, blockFlag or CollisionFlag.BLOCK_NPCS)
+    }
+
+    private companion object {
+        const val TERRAIN_BLOCKERS =
+            CollisionFlag.LOC or
+                CollisionFlag.BLOCK_WALK or
+                CollisionFlag.GROUND_DECOR or
+                CollisionFlag.BLOCK_PLAYERS
+    }
 }
