@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.EnumSource
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.registry.region.RegionRegistry
@@ -17,11 +18,13 @@ import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.map.collision.add
 import org.rsmod.game.map.collision.remove
 import org.rsmod.game.region.Region
+import org.rsmod.game.seq.EntitySeq
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
@@ -36,6 +39,7 @@ class NylocasMovementTest {
         val bounds: BoundValidator,
         val collision: CollisionFlagMap,
         val npcRepo: NpcRepository,
+        val events: EventBus,
     )
 
     @ParameterizedTest
@@ -428,12 +432,23 @@ class NylocasMovementTest {
             player.telejump(room.normal[CoordGrid(3294, 4243, 0)])
             advance()
             val npc = deps.npcs.single()
+            val animations = mutableListOf<Int>()
+            deps.events.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (npc.pendingSequence != EntitySeq.NULL) animations += npc.pendingSequence.id
+            }
             advance(ticks = 8)
             assertTrue(deps.regions.normalizeCoords(npc.coords).z < NylocasSlot.SouthWest.entry.z)
             assertEquals(99, player.hitpoints)
             advance(ticks = 35)
             assertEquals(nylocas_npcs.fighting(size, style).id, npc.visType.id)
             assertTrue(player.hitpoints < 99)
+            val attackId =
+                when (style) {
+                    NylocasStyle.Melee -> 8004
+                    NylocasStyle.Ranged -> 7999
+                    NylocasStyle.Magic -> 7989
+                }
+            assertEquals(setOf(attackId), animations.toSet())
         }
     }
 

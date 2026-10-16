@@ -45,12 +45,29 @@ object nylocas_npcs : NpcReferences() {
 }
 
 object nylocas_seqs : SeqReferences() {
+    val magic_attack = find("top_spider_magic_attack")
+    val ranged_attack = find("top_spider_ranged_attack")
+    val melee_attack = find("top_spider_melee_attack")
     val magic_death = find("top_spider_magic_death")
     val ranged_death = find("top_spider_ranged_death")
     val melee_death = find("top_spider_melee_death")
     val magic_detonate = find("top_spider_magic_death_detonate")
     val ranged_detonate = find("top_spider_ranged_death_detonate")
     val melee_detonate = find("top_spider_melee_death_detonate")
+
+    fun attack(style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> melee_attack
+            NylocasStyle.Ranged -> ranged_attack
+            NylocasStyle.Magic -> magic_attack
+        }
+
+    fun death(style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> melee_death
+            NylocasStyle.Ranged -> ranged_death
+            NylocasStyle.Magic -> magic_death
+        }
 
     fun expiry(size: NylocasSize, style: NylocasStyle) =
         when (style) {
@@ -61,9 +78,19 @@ object nylocas_seqs : SeqReferences() {
 }
 
 object nylocas_spots : SpotanimReferences() {
+    val melee_standard = find("tob_nylocas_death_melee_standard")
+    val ranged_standard = find("tob_nylocas_death_ranged_standard")
+    val magic_standard = find("tob_nylocas_death_magic_standard")
     val melee_detonate = find("tob_nylocas_death_melee_detonate")
     val ranged_detonate = find("tob_nylocas_death_ranged_detonate")
     val magic_detonate = find("tob_nylocas_death_magic_detonate")
+
+    fun death(style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> melee_standard
+            NylocasStyle.Ranged -> ranged_standard
+            NylocasStyle.Magic -> magic_standard
+        }
 
     fun explosion(style: NylocasStyle) =
         when (style) {

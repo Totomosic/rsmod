@@ -73,7 +73,9 @@ private fun Npc.retaliate(target: Player, interactions: AiPlayerInteractions, ap
 }
 
 public fun Npc.combatPlayDefendAnim(clientDelay: Int = 0) {
-    val defendAnim = visType.paramOrNull(params.defend_anim)
+    // Only play an explicitly configured NPC reaction. paramOrNull also resolves
+    // the human block default, which distorts models without a block animation.
+    val defendAnim = visType.paramMap?.getOrNull(params.defend_anim)
     if (defendAnim != null) {
         anim(defendAnim, delay = clientDelay)
     }

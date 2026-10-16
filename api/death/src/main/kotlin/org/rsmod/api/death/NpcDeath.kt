@@ -23,6 +23,7 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcUid
 import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.seq.SeqType
 import org.rsmod.game.type.seq.SeqTypeList
 import org.rsmod.map.CoordGrid
 
@@ -38,8 +39,12 @@ constructor(
     private val dropTables: NpcDropTables,
     private val random: GameRandom,
 ) {
-    public suspend fun deathNoDrops(access: StandardNpcAccess) {
-        access.death(npcRepo, seqTypes, players)
+    public suspend fun deathNoDrops(
+        access: StandardNpcAccess,
+        animation: SeqType = access.param(params.death_anim),
+        animationTicks: Int = seqTypes[animation].tickDuration,
+    ) {
+        access.death(npcRepo, seqTypes, players, animation, animationTicks)
     }
 
     public suspend fun deathWithDrops(
@@ -93,8 +98,8 @@ private var Npc.aggressivePlayer by typePlayerUidVarn(varns.aggressive_player)
  * **Notes:**
  * - This is **not** the way to "kill" a npc. This "death sequence" occurs after the npc has already
  *   been deemed dead and its death queue is being processed.
- * - To queue a npc's death, use [StandardNpcAccess.queueDeath] or
- *   [org.rsmod.api.npc.queueDeath] instead.
+ * - To queue a npc's death, use [StandardNpcAccess.queueDeath] or [org.rsmod.api.npc.queueDeath]
+ *   instead.
  * - This function **does not** spawn any drop table objs for the npc.
  * - Drop table spawns are handled via [NpcDeath.deathWithDrops], which is **automatically called**
  *   for queued deaths by default. However, if you override death queues for specific npc types
@@ -105,7 +110,10 @@ public suspend fun StandardNpcAccess.death(
     npcRepo: NpcRepository,
     seqTypes: SeqTypeList,
     players: PlayerList,
+    animation: SeqType = param(params.death_anim),
+    animationTicks: Int = seqTypes[animation].tickDuration,
 ) {
+    require(animationTicks > 0) { "Death animation duration must be positive: $animationTicks" }
     walk(coords)
     noneMode()
     hideAllOps()
@@ -128,9 +136,8 @@ public suspend fun StandardNpcAccess.death(
         }
     }
 
-    val deathAnim = param(params.death_anim)
-    anim(deathAnim)
-    delay(seqTypes[deathAnim])
+    anim(animation)
+    delay(animationTicks)
 
     npc.clearFreeze()
 
