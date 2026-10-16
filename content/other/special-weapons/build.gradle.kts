@@ -9,6 +9,7 @@ dependencies {
     implementation(projects.api.weapons)
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(projects.api.invPlugin)
+    integrationImplementation(projects.api.registry)
     integrationImplementation(projects.api.pluginCommons)
     integrationImplementation(projects.api.weapons)
 }

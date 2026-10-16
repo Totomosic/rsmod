@@ -84,6 +84,7 @@ import org.rsmod.api.registry.obj.ObjRegistry
 import org.rsmod.api.registry.player.PlayerRegistry
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.registry.zone.ZonePlayerActivityBitSet
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.repo.controller.ControllerRepository
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
@@ -1036,6 +1037,7 @@ constructor(
             bind(ObjRegistry::class.java).`in`(Scopes.SINGLETON)
             bind(ObjRepository::class.java).`in`(Scopes.SINGLETON)
             bind(WorldRepository::class.java).`in`(Scopes.SINGLETON)
+            bind(ZoneUpdateMap::class.java).`in`(Scopes.SINGLETON)
 
             // These type lists can be modified by tests to ensure interactions pass
             // validation checks. Tests need the flexibility to create and modify these

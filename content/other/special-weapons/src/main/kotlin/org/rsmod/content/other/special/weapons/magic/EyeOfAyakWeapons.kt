@@ -3,7 +3,6 @@ package org.rsmod.content.other.special.weapons.magic
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.manager.CombatChargeManager
-import org.rsmod.api.config.refs.projanims
 import org.rsmod.api.config.refs.synths
 import org.rsmod.api.obj.charges.ObjChargeManager.Companion.isFailure
 import org.rsmod.api.player.protect.ProtectedAccess
@@ -12,6 +11,7 @@ import org.rsmod.api.weapons.MagicWeapon
 import org.rsmod.api.weapons.WeaponAttackManager
 import org.rsmod.api.weapons.WeaponMap
 import org.rsmod.api.weapons.WeaponRepository
+import org.rsmod.content.other.special.weapons.configs.EyeOfAyakProjs
 import org.rsmod.content.other.special.weapons.configs.EyeOfAyakSeqs
 import org.rsmod.content.other.special.weapons.configs.EyeOfAyakSpots
 import org.rsmod.content.other.special.weapons.configs.EyeOfAyakVars
@@ -57,9 +57,11 @@ class EyeOfAyakWeapons @Inject constructor(private val charges: CombatChargeMana
             anim(EyeOfAyakSeqs.cast)
             spotanim(EyeOfAyakSpots.cast)
             val projectile =
-                manager.spawnProjectile(this, target, EyeOfAyakSpots.travel, projanims.magic_spell)
+                manager.spawnProjectile(this, target, EyeOfAyakSpots.travel, EyeOfAyakProjs.travel)
             val (serverDelay, clientDelay) = projectile.durations
-            val castSound = synths.toa_shadow_weapon_cast_fire_01
+            // Eye uses the ancient shadow cast sound (178), not Tumeken's Shadow (6410).
+            // https://oldschool.runescape.wiki/w/List_of_in-game_sound_IDs
+            val castSound = synths.shadow_cast
 
             if (manager.rollStaffSplash(this, target, attack)) {
                 manager.playSplashFx(

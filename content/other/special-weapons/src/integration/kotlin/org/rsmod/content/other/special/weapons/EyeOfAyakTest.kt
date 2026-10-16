@@ -4,6 +4,8 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.sound.SynthSound
+import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
@@ -30,12 +32,14 @@ import org.rsmod.api.inv.HeldUOpScript
 import org.rsmod.api.obj.charges.ObjChargeManager
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.api.weapons.WeaponModule
 import org.rsmod.api.weapons.WeaponRegistry
 import org.rsmod.api.weapons.attack
+import org.rsmod.content.other.special.weapons.configs.EyeOfAyakSpots
 import org.rsmod.content.other.special.weapons.configs.special_weapon_objs
 import org.rsmod.content.other.special.weapons.magic.EyeOfAyakCharges
 import org.rsmod.content.other.special.weapons.magic.EyeOfAyakCharges.Currency
@@ -51,10 +55,56 @@ import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.WeaponCategory
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class EyeOfAyakTest {
+    @ParameterizedTest
+    @CsvSource("1, 1", "2, 1", "3, 2", "4, 2", "5, 2", "6, 2", "7, 2", "8, 2")
+    fun `projectile and damage follow the Eye of Ayak hit delay table`(
+        distance: Int,
+        hitDelay: Int,
+        state: GameTestState,
+    ) =
+        state.runEyeTest { deps ->
+            val npc = spawnDummy()
+            player.placeAt(npc.coords.translateZ(distance))
+            equipEye(deps)
+            random.next = HIT_ROLL
+            random.then = 5
+            cast(deps, npc)
+            val projectile =
+                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                    .filterIsInstance<MapProjAnimV2>()
+                    .single()
+            assertEquals(EyeOfAyakSpots.travel.id, projectile.id)
+            assertEquals(hitDelay, projectile.endTime / 30)
+            val queued = npc.pendingHits().single()
+            // NPCs process before players, adding one processing tick to the wiki's hit delay.
+            assertEquals(hitDelay + 1, queued.second)
+            assertTrue(projectile.startTime < projectile.endTime)
+            advance(ticks = hitDelay)
+            assertEquals(DUMMY_HITPOINTS, npc.hitpoints)
+            advance()
+            assertEquals(DUMMY_HITPOINTS - 5, npc.hitpoints)
+        }
+
+    @ParameterizedTest
+    @CsvSource("0", "9999")
+    fun `casts play the Eye of Ayak sound on hits and splashes`(
+        accuracyRoll: Int,
+        state: GameTestState,
+    ) =
+        state.runEyeTest { deps ->
+            val npc = spawnDummy()
+            equipEye(deps)
+            random.next = accuracyRoll
+            random.then = 5
+            cast(deps, npc)
+            assertEquals(178, client.single<SynthSound>().id)
+        }
+
     @ParameterizedTest
     @CsvSource(
         "eye_of_ayak, 0, 16, 0",
@@ -451,6 +501,7 @@ class EyeOfAyakTest {
         val types: AttackTypes,
         val styles: AttackStyles,
         val objCharges: ObjChargeManager,
+        val zoneUpdates: ZoneUpdateMap,
     )
 
     private object EyeTestModule : AbstractModule() {
