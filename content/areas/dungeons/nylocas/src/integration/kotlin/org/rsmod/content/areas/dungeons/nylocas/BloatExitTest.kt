@@ -30,7 +30,8 @@ class BloatExitTest {
 
     @Test
     fun GameTestState.`either exit half enters the start of the bridge in the same instance`() =
-        runInjectedGameTest(Dependencies::class, null, BloatExit::class) { deps ->
+        runInjectedGameTest(Dependencies::class, null, BloatExit::class, TheatreRaid::class) { deps
+            ->
             val blocked =
                 CollisionFlag.BLOCK_WALK or CollisionFlag.LOC or CollisionFlag.GROUND_DECOR
             // Check the loaded cache collision as well as the copied instance terrain.
@@ -43,6 +44,10 @@ class BloatExitTest {
             val other = registerPlayer(coords = room.normal[CoordGrid(3322, 4448, 0)])
             advance()
 
+            player.opLoc1(west)
+            advance()
+            assertEquals(room.normal[BloatExitRoom.doorstep], player.coords)
+            deps.raid.start(player)
             player.opLoc1(west)
             other.opLoc2(east)
             advance()

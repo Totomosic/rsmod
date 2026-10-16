@@ -29,6 +29,90 @@ class NylocasDevelopmentCommandTest {
     )
 
     @Test
+    fun GameTestState.`every account role can create a lobby and teleport to the door`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            for (role in
+                listOf(modlevels.player, modlevels.moderator, modlevels.admin, modlevels.owner)) {
+                player.modLevel = deps.modLevels[role]
+                player.telejump(CoordGrid(3222, 3218, 0))
+                deps.handler.handle(player, ClientCheat("theatrecreate"))
+                advance()
+                assertNotNull(deps.regions[player.coords])
+                assertEquals(CoordGrid(3322, 4447, 0), deps.regions.normalizeCoords(player.coords))
+            }
+        }
+
+    @Test
+    fun GameTestState.`ordinary players create join and start a shared lobby by host name`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            player.modLevel = deps.modLevels[modlevels.player]
+            player.displayName = "Raid Host"
+            deps.handler.handle(player, ClientCheat("theatrecreate"))
+            advance()
+            val room = checkNotNull(deps.regions[player.coords])
+            assertEquals(CoordGrid(3322, 4447, 0), deps.regions.normalizeCoords(player.coords))
+            val guest = registerPlayer(coords = CoordGrid(3222, 3218, 0))
+            guest.modLevel = deps.modLevels[modlevels.player]
+            deps.handler.handle(guest, ClientCheat("theatrejoin rAiD hOsT"))
+            assertEquals(player.coords, guest.coords)
+            deps.handler.handle(guest, ClientCheat("theatrestart"))
+            assertEquals(0, guest.vars[tob_varbits.party_status])
+            deps.handler.handle(player, ClientCheat("theatrestart"))
+            assertEquals(2, player.vars[tob_varbits.party_status])
+            assertEquals(2, guest.vars[tob_varbits.party_status])
+            assertEquals(2, guest.vars[tob_varbits.party_slot])
+            val late = registerPlayer(coords = CoordGrid(3222, 3218, 0))
+            late.modLevel = deps.modLevels[modlevels.player]
+            deps.handler.handle(late, ClientCheat("theatrejoin raid host"))
+            assertNull(deps.regions[late.coords])
+            assertEquals(room.uid, deps.regions[guest.coords]?.uid)
+        }
+
+    @Test
+    fun GameTestState
+        .`full missing and abandoned lobbies reject joins and instances stay isolated`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            player.modLevel = deps.modLevels[modlevels.player]
+            player.displayName = "Host"
+            deps.handler.handle(player, ClientCheat("theatrecreate"))
+            advance()
+            val first = checkNotNull(deps.regions[player.coords])
+            val guests = List(5) { registerPlayer(coords = CoordGrid(3222, 3218, 0)) }
+            for (guest in guests) {
+                guest.modLevel = deps.modLevels[modlevels.player]
+                deps.handler.handle(guest, ClientCheat("theatrejoin host"))
+            }
+            assertTrue(guests.take(4).all { deps.regions[it.coords]?.uid == first.uid })
+            assertNull(deps.regions[guests.last().coords])
+            deps.handler.handle(guests.last(), ClientCheat("theatrejoin missing"))
+            assertNull(deps.regions[guests.last().coords])
+            deps.handler.handle(player, ClientCheat("theatrecreate"))
+            advance()
+            val second = checkNotNull(deps.regions[player.coords])
+            assertNotEquals(first.uid, second.uid)
+            deps.handler.handle(guests.last(), ClientCheat("theatrejoin host"))
+            assertEquals(second.uid, deps.regions[guests.last().coords]?.uid)
+            player.telejump(CoordGrid(3222, 3218, 0))
+            deps.handler.handle(guests.first(), ClientCheat("theatrejoin host"))
+            assertEquals(first.uid, deps.regions[guests.first().coords]?.uid)
+        }
+
+    @Test
     fun GameTestState.`start raid command initializes the HUD in the current room`() =
         runInjectedGameTest(
             Dependencies::class,

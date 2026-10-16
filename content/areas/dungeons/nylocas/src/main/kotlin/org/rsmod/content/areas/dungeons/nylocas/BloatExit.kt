@@ -22,6 +22,7 @@ constructor(
     private val regions: RegionRegistry,
     private val regionRepo: RegionRepository,
     private val locRepo: LocRepository,
+    private val raid: TheatreRaid,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onOpLoc1(nylocas_locs.passage) { enter(it.loc) }
@@ -48,6 +49,10 @@ constructor(
         val source = regions.normalizeCoords(passage.coords)
         // This passage type is shared by other Theatre rooms and by the Nylocas entrance.
         if (source.level != 0 || source.x != 3322 || source.z !in 4447..4448) {
+            return
+        }
+        if (!raid.isStarted(player, region)) {
+            mes("The host must click Start raid before you can pass through this door.")
             return
         }
         telejump(region.normal[NylocasRoom.bridgeStart])

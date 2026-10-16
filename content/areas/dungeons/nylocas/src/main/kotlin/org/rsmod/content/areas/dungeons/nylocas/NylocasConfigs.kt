@@ -13,6 +13,7 @@ object nylocas_locs : LocReferences() {
 }
 
 object nylocas_npcs : NpcReferences() {
+    val support = find("tob_nylocas_support")
     val small_magic = find("tob_nylocas_incoming_magic")
     val small_ranged = find("tob_nylocas_incoming_ranged")
     val small_melee = find("tob_nylocas_incoming_melee")

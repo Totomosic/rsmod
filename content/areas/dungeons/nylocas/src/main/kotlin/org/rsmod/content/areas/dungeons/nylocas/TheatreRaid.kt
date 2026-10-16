@@ -20,6 +20,7 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.varbit.VarBitType
+import org.rsmod.map.CoordGrid
 import org.rsmod.map.square.MapSquareKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
@@ -33,6 +34,47 @@ constructor(
     private val eventBus: EventBus,
 ) : PluginScript() {
     private val raids = mutableMapOf<Int, Raid>()
+    private val lobbies = mutableMapOf<Int, Lobby>()
+
+    fun createLobby(player: Player, region: Region) {
+        process()
+        lobbies[region.uid] = Lobby(region, player)
+        player.mes("Lobby created. Friends can join using your name. Click Start raid when ready.")
+    }
+
+    fun joinLobby(player: Player, hostName: String): CoordGrid? {
+        process()
+        val name = hostName.trim().replace('_', ' ')
+        val lobby =
+            lobbies.values.firstOrNull {
+                it.host.displayName.ifBlank { it.host.username }.equals(name, ignoreCase = true)
+            }
+        if (lobby == null) {
+            player.mes("No open lobby found for that player.")
+            return null
+        }
+        if (raids.containsKey(lobby.region.uid)) {
+            player.mes("That raid has already started.")
+            return null
+        }
+        val occupants = players.filter { regions[it.coords]?.uid == lobby.region.uid }
+        if (player !in occupants && occupants.size >= PARTY_SIZE) {
+            player.mes("That lobby is full. The Theatre supports up to five players.")
+            return null
+        }
+        player.mes("Joined the lobby. Wait for the host to click Start raid.")
+        return lobby.region.normal[BloatExitRoom.doorstep]
+    }
+
+    fun startLobby(player: Player) {
+        process()
+        val lobby = regions[player.coords]?.let { lobbies[it.uid] }
+        if (lobby == null || lobby.host !== player) {
+            player.mes("Only the lobby host can start the raid. Create a lobby to host your own.")
+            return
+        }
+        start(player)
+    }
 
     override fun ScriptContext.startup() {
         onEvent<GameLifecycle.EndCycle> { process() }
@@ -47,6 +89,11 @@ constructor(
         val source = regions.normalizeCoords(player.coords)
         if (region == null || MapSquareKey.from(source).id !in setOf(13122, 13125)) {
             player.mes("Teleport to the Bloat exit or Nylocas bridge before starting the raid.")
+            return
+        }
+        val lobby = lobbies[region.uid]
+        if (lobby != null && lobby.host !== player) {
+            player.mes("Only the lobby host can start the raid.")
             return
         }
         val existing = raids[region.uid]
@@ -73,9 +120,11 @@ constructor(
 
     fun beginRoom(region: Region) {
         val raid = raids[region.uid] ?: return
+        if (raid.progressType != 0) return
         // ToB QoL observes room status 1 during the countdown before the first wave.
         raid.progressType = 1
         sync(raid)
+        eventBus.publish(NylocasRoomStart(region))
     }
 
     fun waveSpawned(region: Region, wave: Int = 1) {
@@ -86,6 +135,11 @@ constructor(
     }
 
     private fun process() {
+        lobbies.values.removeAll {
+            it.region.slot == Region.INVALID_SLOT ||
+                players[it.host.slotId] !== it.host ||
+                regions[it.host.coords]?.uid != it.region.uid
+        }
         val iterator = raids.values.iterator()
         while (iterator.hasNext()) {
             val raid = iterator.next()
@@ -107,6 +161,7 @@ constructor(
     }
 
     private fun leave(player: Player) {
+        lobbies.values.removeAll { it.host === player }
         for (raid in raids.values) {
             if (raid.members.remove(player)) {
                 sync(raid)
@@ -167,6 +222,8 @@ constructor(
         // The native HUD hides 0, treats 1 as zero HP, and renders 1..27 as 0..26 pixels.
         return 1 + (hp * 26 + base - 1) / base
     }
+
+    private class Lobby(val region: Region, val host: Player)
 
     private class Raid(
         val region: Region,

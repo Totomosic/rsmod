@@ -25,6 +25,50 @@ constructor(
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onCommand(
+            "theatrecreate",
+            "Create a Theatre lobby",
+            {
+                val launched =
+                    protectedAccess.launch(player) {
+                        val room = bloatExit.createRoom()
+                        if (room == null) {
+                            mes("Could not create a lobby. Try again in a few seconds.")
+                            return@launch
+                        }
+                        telejump(room.normal[BloatExitRoom.doorstep])
+                        raid.createLobby(player, room)
+                    }
+                if (!launched) player.mes(constants.dm_busy)
+            },
+        ) {
+            modLevel = null
+        }
+        onCommand(
+            "theatrejoin",
+            "Join a Theatre lobby by host name",
+            {
+                val hostName = args.joinToString(" ")
+                val launched =
+                    protectedAccess.launch(player) {
+                        val destination = raid.joinLobby(player, hostName) ?: return@launch
+                        telejump(destination)
+                    }
+                if (!launched) player.mes(constants.dm_busy)
+            },
+        ) {
+            modLevel = null
+        }
+        onCommand(
+            "theatrestart",
+            "Start your Theatre lobby",
+            {
+                val launched = protectedAccess.launch(player) { raid.startLobby(player) }
+                if (!launched) player.mes(constants.dm_busy)
+            },
+        ) {
+            modLevel = null
+        }
+        onCommand(
             "starttob",
             "Start the Theatre of Blood raid and show the party HUD",
             {

@@ -7,15 +7,25 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.system.measureNanoTime
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import org.rsmod.game.GameProcess
 import org.rsmod.server.services.concurrent.ScheduledListenerService
 
-class GameService @Inject constructor(private val process: GameProcess) : ScheduledListenerService {
+class GameService
+internal constructor(
+    private val process: GameProcess,
+    private val nanoTime: () -> Long,
+    private val sleep: suspend (Long) -> Unit,
+) : ScheduledListenerService {
+    @Inject
+    constructor(
+        process: GameProcess
+    ) : this(process, System::nanoTime, { if (it > 0) delay(it) else yield() })
+
     private val logger = InlineLogger()
 
-    private var excessCycleNanos = 0L
+    private var nextCycleNanos: Long? = null
     private val shutdownSignaled = AtomicBoolean(false)
 
     override suspend fun run() {
@@ -24,26 +34,26 @@ class GameService @Inject constructor(private val process: GameProcess) : Schedu
         if (shutdownSignaled.get()) {
             return
         }
-        val elapsedNanos = measureNanoTime { process.cycle() } + excessCycleNanos
-        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(elapsedNanos)
-        val overdue = elapsedMillis > GAME_TICK_INTERVAL
-        val sleepTime =
-            if (overdue) {
-                val elapsedCycleCount = elapsedMillis / GAME_TICK_INTERVAL
-                val upcomingCycleDelay = (elapsedCycleCount + 1) * GAME_TICK_INTERVAL
-                upcomingCycleDelay - elapsedMillis
-            } else {
-                GAME_TICK_INTERVAL - elapsedMillis
-            }
-        if (overdue) {
+        val started = nanoTime()
+        // Advance the original timeline, including time lost waking up or between run calls.
+        // A late cycle therefore reduces the next wait instead of permanently slowing the game.
+        val deadline = (nextCycleNanos ?: started) + GAME_TICK_NANOS
+        nextCycleNanos = deadline
+        process.cycle()
+        val finished = nanoTime()
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(finished - started)
+        val remainingNanos = deadline - finished
+        // Round up so a sub-millisecond remainder never starts the next cycle early.
+        val sleepTime = if (remainingNanos > 0) (remainingNanos + 999_999L) / 1_000_000L else 0L
+        if (remainingNanos < 0) {
+            val behindMillis = TimeUnit.NANOSECONDS.toMillis(-remainingNanos)
             logger.error {
-                "Cycle took too long (elapsed=${elapsedMillis}ms, sleep=${sleepTime}ms)"
+                "Cycle behind schedule (elapsed=${elapsedMillis}ms, behind=${behindMillis}ms)"
             }
         } else {
             logger.trace { "Cycle took ${elapsedMillis}ms, sleep=${sleepTime}ms" }
         }
-        excessCycleNanos = elapsedNanos - TimeUnit.MILLISECONDS.toNanos(elapsedMillis)
-        delay(sleepTime)
+        sleep(sleepTime)
     }
 
     override fun createExecutor(): ExecutorService {
@@ -79,7 +89,7 @@ class GameService @Inject constructor(private val process: GameProcess) : Schedu
     }
 
     private companion object {
-        private const val GAME_TICK_INTERVAL = 600L
+        private const val GAME_TICK_NANOS = 600_000_000L
         private const val GAME_THREAD_NAME = "game"
     }
 }
