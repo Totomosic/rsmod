@@ -126,10 +126,12 @@ class NylocasStallTest {
             if (size == NylocasSize.Big) {
                 advance(ticks = 3)
                 assertEquals(2, player.vars[tob_varbits.progress_value])
-                assertEquals(6, deps.npcs.count())
+                // Each removed big adds two children: the population grows, so
+                // the due wave remains stalled despite the parent removals.
+                assertEquals(18, deps.npcs.count())
                 advance()
-                assertEquals(3, player.vars[tob_varbits.progress_value])
-                assertEquals(12, deps.npcs.count())
+                assertEquals(2, player.vars[tob_varbits.progress_value])
+                assertEquals(18, deps.npcs.count())
             }
         }
 

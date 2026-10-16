@@ -118,8 +118,12 @@ class NylocasExpiryTest {
             }
             advance()
             assertFalse(npc.isSlotAssigned)
-            assertEquals(0, deps.npcs.count())
-            assertEquals(0, deps.collision[lastPosition] and CollisionFlag.BLOCK_NPCS)
+            val expectedChildren = if (size == NylocasSize.Big) 2 else 0
+            assertEquals(expectedChildren, deps.npcs.count())
+            assertEquals(
+                if (size == NylocasSize.Big) CollisionFlag.BLOCK_NPCS else 0,
+                deps.collision[lastPosition] and CollisionFlag.BLOCK_NPCS,
+            )
             if (effectId >= 0) {
                 val local = ZoneGrid.from(lastPosition)
                 assertEquals(
@@ -130,7 +134,7 @@ class NylocasExpiryTest {
                 assertTrue(effects.isEmpty())
             }
             advance(ticks = 10)
-            assertEquals(0, deps.npcs.count())
+            assertEquals(expectedChildren, deps.npcs.count())
             assertEquals(1, animations.size)
             assertEquals(if (effectId >= 0) 1 else 0, effects.size)
         }

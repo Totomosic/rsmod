@@ -452,6 +452,141 @@ class NylocasMovementTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource(
+        "Small, Ranged, 2, East, true",
+        "Small, Ranged, 3, East, false",
+        "Small, Magic, 2, East, true",
+        "Small, Magic, 3, East, false",
+        "Big, Ranged, 2, East, true",
+        "Big, Ranged, 3, East, false",
+        "Big, Magic, 2, East, true",
+        "Big, Magic, 3, East, false",
+        "Small, Ranged, 4, East, false",
+        "Small, Magic, 4, East, false",
+        "Big, Ranged, 4, East, false",
+        "Big, Magic, 4, East, false",
+        "Big, Ranged, 2, West, true",
+        "Big, Ranged, 3, West, false",
+        "Big, Magic, 2, South, true",
+        "Big, Magic, 3, South, false",
+        "Small, Ranged, 2, Diagonal, true",
+        "Small, Ranged, 3, Diagonal, false",
+        "Small, Magic, 2, Diagonal, true",
+        "Small, Magic, 3, Diagonal, false",
+    )
+    fun `ranged and magic aggros attack only within two tiles of their footprint`(
+        size: NylocasSize,
+        style: NylocasStyle,
+        distance: Int,
+        direction: String,
+        expectedAttack: Boolean,
+        state: GameTestState,
+    ) {
+        val wave = NylocasWave(4, westNorth = NylocasSpawn(size, style))
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            WeaponAttackStylesScript::class,
+            PlayerHitScript::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val npc = deps.npcs.single()
+            val anchor = room.normal[CoordGrid(3294, 4248, 0)]
+            npc.telejump(anchor)
+            val target =
+                when (direction) {
+                    "East" -> anchor.translateX(npc.size - 1 + distance)
+                    "West" -> anchor.translateX(-distance)
+                    "South" -> anchor.translateZ(-distance)
+                    "Diagonal" -> anchor.translate(distance, distance)
+                    else -> error("Unknown direction: $direction")
+                }
+            player.telejump(target)
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
+            val attacks = mutableListOf<Int>()
+            deps.events.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (npc.pendingSequence != EntitySeq.NULL) attacks += npc.pendingSequence.id
+            }
+            advance()
+            assertEquals(expectedAttack, attacks.isNotEmpty())
+            if (!expectedAttack) {
+                // Route waypoints may approach diagonals one axis at a time.
+                // The attack must begin once the chase brings the target into reach.
+                advanceUntil(predicate = { attacks.isNotEmpty() }, timeoutTicks = distance * 2 + 1)
+            }
+            val attackPosition = npc.coords
+            advance(ticks = 4)
+            assertEquals(attackPosition, npc.coords)
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "EastNorth, Small, NorthWest, 3292, 4254",
+        "SouthEast, Small, NorthEast, 3301, 4252",
+        "WestNorth, Small, NorthEast, 3299, 4254",
+        "EastSouth, Small, SouthEast, 3301, 4245",
+        "EastSouth, Big, NorthEast, 3300, 4251",
+        "SouthWest, Big, SouthEast, 3298, 4243",
+    )
+    fun `uncongested pillar arrivals prefer the outer end of their approached face`(
+        slot: NylocasSlot,
+        size: NylocasSize,
+        pillar: NylocasPillar,
+        expectedX: Int,
+        expectedZ: Int,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(size, NylocasStyle.Magic, pillar)
+        val wave =
+            NylocasWave(
+                4,
+                westNorth = spawn.takeIf { slot == NylocasSlot.WestNorth },
+                southWest = spawn.takeIf { slot == NylocasSlot.SouthWest },
+                southEast = spawn.takeIf { slot == NylocasSlot.SouthEast },
+                eastNorth = spawn.takeIf { slot == NylocasSlot.EastNorth },
+                eastSouth = spawn.takeIf { slot == NylocasSlot.EastSouth },
+            )
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 35)
+            assertEquals(room.normal[CoordGrid(expectedX, expectedZ, 0)], deps.npcs.single().coords)
+        }
+    }
+
+    @Test
+    fun GameTestState.`an occupied outer end allows the inner tile on the approached face`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    westNorth =
+                        NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic, NylocasPillar.NorthEast),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            deps.collision.add(room.normal[CoordGrid(3299, 4254, 0)], CollisionFlag.BLOCK_NPCS)
+            advance(ticks = 35)
+            assertEquals(room.normal[CoordGrid(3299, 4253, 0)], deps.npcs.single().coords)
+        }
+
     private fun table(vararg waves: NylocasWave): AbstractModule =
         object : AbstractModule() {
             override fun configure() {

@@ -12,13 +12,22 @@ import org.rsmod.game.entity.player.SessionStateEvent
 
 class LoginVarsTest {
     @Test
-    fun GameTestState.`login starts every skill at 99 with matching xp and combat level`() =
+    fun GameTestState.`login starts maxed with potion boosted combat stats and matching xp`() =
         runGameTest(LoginScript::class) {
             eventBus.publish(SessionStateEvent.EngineLogin(player))
 
             for (stat in cacheTypes.stats.values) {
                 assertEquals(99, player.statBase(stat))
-                assertEquals(99, player.stat(stat))
+                val expected =
+                    when (stat.id) {
+                        stats.attack.id,
+                        stats.strength.id,
+                        stats.defence.id -> 118
+                        stats.ranged.id,
+                        stats.magic.id -> 112
+                        else -> 99
+                    }
+                assertEquals(expected, player.stat(stat))
                 assertEquals(13_034_431, player.statMap.getXP(stat))
             }
             assertEquals(126, player.combatLevel)

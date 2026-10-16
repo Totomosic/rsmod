@@ -8,7 +8,9 @@ import net.rsprot.protocol.game.outgoing.misc.client.MinimapToggle
 import net.rsprot.protocol.game.outgoing.misc.client.ResetAnims
 import net.rsprot.protocol.game.outgoing.misc.player.ChatFilterSettings
 import net.rsprot.protocol.game.outgoing.varp.VarpReset
+import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.inv.weight.InvWeight
 import org.rsmod.api.player.output.Camera
 import org.rsmod.api.player.output.ChatType
@@ -20,18 +22,23 @@ import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.startInvTransmit
 import org.rsmod.api.player.stat.PlayerSkillXP
 import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.stat.statAdd
+import org.rsmod.api.player.stat.statBase
 import org.rsmod.api.player.ui.PlayerInterfaceUpdates
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.realm.Realm
+import org.rsmod.api.script.advanced.onChangeStat
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.stats.levelmod.InvisibleLevels
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.stat.StatType
 import org.rsmod.game.type.stat.StatTypeList
 import org.rsmod.game.type.varp.UnpackedVarpType
 import org.rsmod.game.type.varp.VarpTypeList
@@ -47,6 +54,7 @@ constructor(
     private val varpTypes: VarpTypeList,
     private val statTypes: StatTypeList,
     private val invisibleLevels: InvisibleLevels,
+    private val players: PlayerList,
 ) : PluginScript() {
     private val transmitVars by lazy { transmitVars() }
 
@@ -55,13 +63,43 @@ constructor(
 
     override fun ScriptContext.startup() {
         onEvent<SessionStateEvent.EngineLogin>(0L) { player.engineLogin() }
+        onEvent<GameLifecycle.StartCycle> { maintainCombatBoosts() }
+        onEvent<GameLifecycle.LateCycle> { maintainCombatBoosts() }
+        for (stat in
+            listOf(stats.attack, stats.strength, stats.defence, stats.ranged, stats.magic)) {
+            // Timers run before these queues, which run before player combat interactions.
+            onChangeStat(stat) { player.boostCombatStats() }
+        }
     }
 
     private fun Player.engineLogin() {
         maxStats()
+        boostCombatStats()
         unlockPrayers()
         sendHighPriority()
         sendLowPriority()
+    }
+
+    private fun maintainCombatBoosts() {
+        for (player in players) {
+            if (player.canProcess) player.boostCombatStats()
+        }
+    }
+
+    private fun Player.boostCombatStats() {
+        ensureBoost(stats.attack, constant = 5, percent = 15)
+        ensureBoost(stats.strength, constant = 5, percent = 15)
+        ensureBoost(stats.defence, constant = 5, percent = 15)
+        ensureBoost(stats.ranged, constant = 4, percent = 10)
+        ensureBoost(stats.magic, constant = 4, percent = 10)
+    }
+
+    private fun Player.ensureBoost(stat: StatType, constant: Int, percent: Int) {
+        val base = statBase(stat)
+        val target = base + constant + base * percent / 100
+        val missing = target - stat(stat)
+        // Restore the full deficit after drains without stacking or lowering stronger boosts.
+        if (missing > 0) statAdd(stat, constant = missing, percent = 0)
     }
 
     private fun Player.maxStats() {

@@ -8,4 +8,7 @@ dependencies {
     implementation(projects.api.invWeight)
     implementation(projects.api.pluginCommons)
     implementation(projects.api.realm)
+    implementation(projects.api.scriptAdvanced)
+    integrationImplementation(projects.api.gameProcess)
+    integrationImplementation(projects.api.statsPlugin)
 }

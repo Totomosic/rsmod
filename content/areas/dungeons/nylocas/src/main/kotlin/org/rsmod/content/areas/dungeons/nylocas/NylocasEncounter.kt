@@ -113,7 +113,7 @@ constructor(
         npc.aiTimer = 0
         npcRepo.add(npc, Int.MAX_VALUE)
         npc.respawns = false
-        behaviour.add(npc, encounter.region, slot, spawn)
+        behaviour.add(npc, encounter.region, slot, spawn, encounter.teamSize)
     }
 
     private class Encounter(

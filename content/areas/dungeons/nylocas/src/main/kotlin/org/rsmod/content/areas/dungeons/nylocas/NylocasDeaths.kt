@@ -11,7 +11,11 @@ import org.rsmod.plugin.scripts.ScriptContext
 
 class NylocasDeaths
 @Inject
-constructor(private val death: NpcDeath, private val world: WorldRepository) : PluginScript() {
+constructor(
+    private val death: NpcDeath,
+    private val world: WorldRepository,
+    private val behaviour: NylocasBehaviour,
+) : PluginScript() {
     override fun ScriptContext.startup() {
         for (size in NylocasSize.entries) {
             for (style in NylocasStyle.entries) {
@@ -38,5 +42,6 @@ constructor(private val death: NpcDeath, private val world: WorldRepository) : P
         // The small's explosion is detached scenery after its one-tick NPC stage.
         // Bigs retain their body for the full five-tick standard death sequence.
         if (size == NylocasSize.Small) world.spotanimMap(nylocas_spots.death(style), coords)
+        behaviour.completeDeath(npc)
     }
 }

@@ -1,6 +1,7 @@
 package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
+import jakarta.inject.Singleton
 import org.rsmod.api.combat.commons.player.queueCombatRetaliate
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
@@ -23,6 +24,7 @@ import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.PathingEntityAvatar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.movement.MoveRestrict
@@ -36,6 +38,7 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.collision.CollisionStrategy
 import org.rsmod.routefinder.flag.CollisionFlag
 
+@Singleton
 class NylocasBehaviour
 @Inject
 constructor(
@@ -66,12 +69,13 @@ constructor(
             }
         }
 
-    fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn) {
+    fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn, teamSize: Int) {
         val pillar = spawn.pillar?.let { NpcAvatar(2).apply { coords = region.normal[it.source] } }
         val tiles = spawn.pillar?.let { pillarTiles(region, it, npc.size) }.orEmpty()
         // Wave 9's west small shares the big's south lane despite its separate table slot.
         val entry = slot.entry.translateZ(spawn.source(slot).z - slot.source.z)
-        active[npc] = State(region, region.normal[entry], spawn, pillar, tiles, clock.cycle)
+        active[npc] =
+            State(region, region.normal[entry], spawn, pillar, tiles, clock.cycle, teamSize)
         npc.defaultMoveSpeed = MoveSpeed.Walk
         // The incoming lanes are blocked terrain. Only the straight scripted approach uses it.
         npc.moveRestrict = MoveRestrict.BlockedNormal
@@ -81,6 +85,7 @@ constructor(
     fun processLifetimes() {
         // Run independently of AI timers: expiry must continue while an NPC is delayed
         // and after the final wave, including the positive-HP explosion animation.
+        val splits = mutableListOf<Pair<Npc, State>>()
         val iterator = active.entries.iterator()
         while (iterator.hasNext()) {
             val (npc, state) = iterator.next()
@@ -94,12 +99,12 @@ constructor(
                     explode(npc, state)
                     npcRepo.del(npc, Int.MAX_VALUE)
                     iterator.remove()
+                    if (state.spawn.size == NylocasSize.Big) splits += npc to state
                 }
                 continue
             }
             if (npc.hitpoints <= 0 || queues.death in npc.queueList) {
                 // A player kill follows its own death sequence, never a later expiry.
-                iterator.remove()
                 continue
             }
             if (age >= state.spawn.size.expiryAnimationAge) {
@@ -114,6 +119,58 @@ constructor(
                 npc.resetAnim()
                 npc.anim(nylocas_seqs.expiry(state.spawn.size, state.style))
             }
+        }
+        // Children extend active: add them only after the lifetime iteration finishes.
+        for ((npc, state) in splits) split(npc, state)
+    }
+
+    fun completeDeath(npc: Npc) {
+        val state = active.remove(npc) ?: return
+        if (state.spawn.size == NylocasSize.Big) split(npc, state)
+    }
+
+    private fun split(parent: Npc, state: State) {
+        if (state.region.slot == Region.INVALID_SLOT) return
+        // The corpus's usual birth pair is SW/NE on the removal tick. Rare shifted
+        // replay anchors have no established selection rule; do not randomize offsets
+        // or invent a nearest-free-tile search. Births may overlap existing actors.
+        for (offset in 0..1) {
+            val style = random.pick(NylocasStyle.entries)
+            val pillar = random.pick(NylocasPillar.entries)
+            val spawn = NylocasSpawn(NylocasSize.Small, style, pillar)
+            val coords = parent.coords.translate(offset, offset)
+            val npc = Npc(npcTypes[nylocas_npcs.incoming(NylocasSize.Small, style)], coords)
+            npc.baseHitpointsLvl = NylocasSize.Small.hitpoints(state.teamSize)
+            npc.hitpoints = npc.baseHitpointsLvl
+            npc.mode = NpcMode.None
+            npc.setHunt(0)
+            npc.aiTimer(0)
+            npc.defaultMoveSpeed = MoveSpeed.Walk
+            // A child born in a lane still needs its scripted approach into the room.
+            val source = regions.normalizeCoords(coords)
+            val entry =
+                when {
+                    source.x < 3289 -> CoordGrid(3290, source.z, source.level)
+                    source.x > 3302 -> CoordGrid(3301, source.z, source.level)
+                    source.z < 4242 -> CoordGrid(source.x, 4243, source.level)
+                    else -> null
+                }
+            val entered = entry == null
+            npc.moveRestrict = if (entered) MoveRestrict.Normal else MoveRestrict.BlockedNormal
+            npcRepo.add(npc, Int.MAX_VALUE)
+            npc.respawns = false
+            active[npc] =
+                State(
+                    state.region,
+                    entry?.let { state.region.normal[it] } ?: coords,
+                    spawn,
+                    NpcAvatar(2).apply { this.coords = state.region.normal[pillar.source] },
+                    pillarTiles(state.region, pillar, npc.size),
+                    clock.cycle,
+                    state.teamSize,
+                    entered = entered,
+                )
+            npc.aiTimer(1)
         }
     }
 
@@ -176,7 +233,8 @@ constructor(
             when (state.style) {
                 NylocasStyle.Melee -> bounds.touches(npc.avatar, target.avatar)
                 else ->
-                    npc.isWithinDistance(target, 4) &&
+                    // Solo replay approaches stop two tiles from the nearest footprint edge.
+                    npc.isWithinDistance(target, 2) &&
                         !bounds.collides(npc.avatar, target.avatar) &&
                         rays.hasLineOfSight(npc.coords, target.coords, npc.size, npc.size)
             }
@@ -228,11 +286,30 @@ constructor(
 
     private fun approachPillar(npc: Npc, state: State, pillar: NpcAvatar) {
         if (npc.coords in state.pillarTiles) return
-        val available = state.pillarTiles.filter { canOccupy(npc, it) }
+        val centre = state.region.normal[NylocasRoom.arena]
+        val faces =
+            state.pillarTiles.groupBy { tile ->
+                tile.x + npc.size == pillar.coords.x || tile.x == pillar.coords.x + pillar.size
+            }
+        // Replays approach the nearer face but favour its outer end, rather than
+        // the individually nearest contact tile. Keep inner tiles as fallbacks.
+        val available =
+            faces.entries
+                .sortedBy { (_, tiles) -> tiles.minOf { npc.coords.chebyshevDistance(it) } }
+                .flatMap { (vertical, tiles) ->
+                    tiles.sortedBy { tile ->
+                        if (vertical) {
+                            if (pillar.coords.z > centre.z) -tile.z else tile.z
+                        } else {
+                            if (pillar.coords.x > centre.x) -tile.x else tile.x
+                        }
+                    }
+                }
+                .filter { canOccupy(npc, it) }
         // Ignore our own footprint during searches, but retain every other occupancy flag.
         npc.removeBlockWalkCollision(collision, npc.coords)
         try {
-            for (tile in available.sortedBy { npc.coords.chebyshevDistance(it) }) {
+            for (tile in available) {
                 val route = routes.create(npc.avatar, tile, PillarCollision)
                 if (route.success) {
                     state.waitingReturn = null
@@ -338,6 +415,7 @@ constructor(
         val pillar: NpcAvatar?,
         val pillarTiles: List<CoordGrid>,
         val spawnCycle: Int,
+        val teamSize: Int,
         var style: NylocasStyle = spawn.style,
         var entered: Boolean = false,
         var target: Player? = null,

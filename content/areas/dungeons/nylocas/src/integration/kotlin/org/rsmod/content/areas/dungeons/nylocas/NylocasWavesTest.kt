@@ -75,8 +75,8 @@ class NylocasWavesTest {
             player.telejump(room.normal[NylocasRoom.bridge])
 
             val fixtures = fixtures()
-            // Fixed expected schedule with no player kills or big splits. Natural
-            // expiry releases capacity before each due check; wave 20 uses cap 12.
+            // Fixed expected schedule with no player kills. Big expiry adds two
+            // fresh children before each due check; wave 20 still uses cap 12.
             val spawnOffsets =
                 listOf(
                     0,
@@ -87,49 +87,84 @@ class NylocasWavesTest {
                     68,
                     72,
                     84,
-                    104,
                     120,
                     136,
-                    160,
-                    172,
+                    180,
                     188,
-                    212,
-                    224,
+                    232,
                     240,
-                    252,
-                    264,
-                    276,
+                    284,
                     292,
-                    300,
-                    312,
-                    320,
-                    328,
                     336,
-                    340,
                     348,
                     356,
                     368,
                     384,
+                    392,
+                    444,
+                    456,
+                    464,
+                    472,
+                    476,
+                    484,
+                    500,
+                    564,
+                    572,
                 )
             val due = spawnOffsets.withIndex().associate { it.value to it.index + 1 }
             val offset = spawnOffsets.last()
             val births = mutableMapOf<Npc, Pair<Int, Fixture>>()
-            for (elapsed in 0..(offset + 55)) {
+            for (elapsed in 0..(offset + 107)) {
                 val wave = due[elapsed]
                 val newborn = deps.npcs.filter { it !in births }
                 val expected = fixtures.filter { it.wave == wave }
-                assertEquals(expected.size, newborn.size, "births at first-wave+$elapsed")
+                val parents =
+                    births
+                        .filter { (_, birth) ->
+                            birth.second.size == NylocasSize.Big && elapsed - birth.first == 55
+                        }
+                        .keys
+                assertEquals(
+                    expected.size + parents.size * 2,
+                    newborn.size,
+                    "births at first-wave+$elapsed",
+                )
+                val splitCoords =
+                    parents.flatMap { listOf(it.coords, it.coords.translate(1, 1)) }.toMutableList()
+                var laneBirths = 0
                 for (npc in newborn) {
                     val source = deps.regions.normalizeCoords(npc.coords)
                     val fixture =
-                        expected.single {
-                            it.source == source &&
-                                it.size ==
-                                    (if (npc.size == 1) NylocasSize.Small else NylocasSize.Big)
-                        }
+                        expected
+                            .singleOrNull {
+                                it.source == source &&
+                                    it.size ==
+                                        (if (npc.size == 1) NylocasSize.Small else NylocasSize.Big)
+                            }
+                            ?.also { laneBirths++ }
+                            ?: run {
+                                assertTrue(
+                                    splitCoords.remove(npc.coords),
+                                    "split at $source on $elapsed",
+                                )
+                                Fixture(
+                                    0,
+                                    0,
+                                    NylocasSlot.WestSouth,
+                                    source,
+                                    NylocasSize.Small,
+                                    NylocasStyle.entries[npc.id - 8342],
+                                    NylocasPillar.SouthWest,
+                                    null,
+                                    null,
+                                    null,
+                                )
+                            }
                     births[npc] = elapsed to fixture
                     assertEquals(nylocas_npcs.incoming(fixture.size, fixture.initial).id, npc.id)
                 }
+                assertEquals(expected.size, laneBirths)
+                assertTrue(splitCoords.isEmpty())
                 if (wave != null) assertEquals(wave, player.vars[tob_varbits.progress_value])
                 val present =
                     births
@@ -159,7 +194,7 @@ class NylocasWavesTest {
                 }
                 advance()
             }
-            assertEquals(120, births.size)
+            assertEquals(206, births.size)
             assertEquals(0, deps.npcs.count())
             assertEquals(31, player.vars[tob_varbits.progress_value])
         }
