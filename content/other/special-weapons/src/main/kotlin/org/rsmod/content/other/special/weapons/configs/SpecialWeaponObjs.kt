@@ -30,7 +30,7 @@ internal object SpecialWeaponObjEditor : ObjEditor() {
             edit(eye) {
                 weaponCategory = WeaponCategory.PoweredStaff.id
                 param[params.attackrate] = 3
-                param[params.attackrange] = 7
+                param[params.attackrange] = 6
                 param[params.charged_variant] = special_weapon_objs.eye_of_ayak
                 param[params.uncharged_variant] = special_weapon_objs.eye_of_ayak_uncharged
                 objvar = mutableListOf(EyeOfAyakVars.charges, EyeOfAyakVars.demon_tears)

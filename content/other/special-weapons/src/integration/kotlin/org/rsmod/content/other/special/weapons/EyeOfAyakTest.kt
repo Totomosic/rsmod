@@ -173,7 +173,7 @@ class EyeOfAyakTest {
                 player.worn[Wearpos.RightHand.slot] = InvObj(eye)
                 assertEquals(WeaponCategory.PoweredStaff.id, deps.objTypes[eye].weaponCategory)
                 assertEquals(3, deps.objTypes[eye].param(params.attackrate))
-                assertEquals(7, deps.objTypes[eye].param(params.attackrange))
+                assertEquals(6, deps.objTypes[eye].param(params.attackrange))
                 assertEquals(AttackStyle.LongrangeMagic, deps.styles.resolve(deps.objTypes[eye], 3))
                 assertEquals(AttackType.Magic, deps.types.get(player))
                 assertNotNull(deps.registry.getMagic(InvObj(eye)))

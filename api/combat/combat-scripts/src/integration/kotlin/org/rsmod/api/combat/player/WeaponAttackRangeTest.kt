@@ -12,18 +12,18 @@ import org.rsmod.game.inv.InvObj
 @Execution(ExecutionMode.SAME_THREAD)
 class WeaponAttackRangeTest {
     @Test
-    fun GameTestState.`Eye of ayak attacks from seven tiles on accurate`() = runGameTest {
+    fun GameTestState.`Eye of ayak attacks from six tiles on accurate`() = runGameTest {
         val eye = findObjType { it.internalName == "eye_of_ayak" }.single()
         player.righthand = InvObj(eye)
-        player.withProtectedAccess { assertEquals(7, weaponAttackRange(AttackStyle.AccurateMagic)) }
+        player.withProtectedAccess { assertEquals(6, weaponAttackRange(AttackStyle.AccurateMagic)) }
     }
 
     @Test
-    fun GameTestState.`Eye of ayak attacks from nine tiles on longrange`() = runGameTest {
+    fun GameTestState.`Eye of ayak attacks from eight tiles on longrange`() = runGameTest {
         val eye = findObjType { it.internalName == "eye_of_ayak" }.single()
         player.righthand = InvObj(eye)
         player.withProtectedAccess {
-            assertEquals(9, weaponAttackRange(AttackStyle.LongrangeMagic))
+            assertEquals(8, weaponAttackRange(AttackStyle.LongrangeMagic))
         }
     }
 
