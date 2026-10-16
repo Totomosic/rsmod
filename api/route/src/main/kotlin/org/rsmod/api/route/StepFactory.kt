@@ -117,7 +117,7 @@ public class StepFactory @Inject constructor(flags: CollisionFlagMap) {
         validated(
             source = from,
             dest = dest,
-            size = npc.size,
+            size = npc.collisionSize,
             extraFlag = npc.validatedCollisionFlag(collision),
             collision = collision,
         )

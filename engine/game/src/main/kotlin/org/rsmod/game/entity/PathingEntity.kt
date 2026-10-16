@@ -145,6 +145,10 @@ public sealed class PathingEntity {
     public val size: Int
         get() = avatar.size
 
+    /** Footprint used for movement and reservations, independent of visual/combat size. */
+    public open val collisionSize: Int
+        get() = size
+
     public val hasMovedThisCycle: Boolean
         get() = lastMovement >= processedMapClock
 
@@ -284,9 +288,9 @@ public sealed class PathingEntity {
     /**
      * This function will call [faceSquare] with arguments based on the provided [loc] and its
      * dimensions ([width] and [length]). The dimensions should be the unmodified values from the
-     * [org.rsmod.game.type.loc.UnpackedLocType] of the loc. This method automatically adjusts
-     * the dimensions according to the loc's angle to ensure that the PathingEntity faces the
-     * correct angle.
+     * [org.rsmod.game.type.loc.UnpackedLocType] of the loc. This method automatically adjusts the
+     * dimensions according to the loc's angle to ensure that the PathingEntity faces the correct
+     * angle.
      *
      * @see [faceSquare]
      */
@@ -408,8 +412,8 @@ public sealed class PathingEntity {
 
     public fun addBlockWalkCollision(collision: CollisionFlagMap, base: CoordGrid) {
         val collisionFlag = blockWalkCollisionFlag ?: return
-        for (z in 0 until size) {
-            for (x in 0 until size) {
+        for (z in 0 until collisionSize) {
+            for (x in 0 until collisionSize) {
                 collision.add(base.x + x, base.z + z, base.level, collisionFlag)
             }
         }
@@ -417,8 +421,8 @@ public sealed class PathingEntity {
 
     public fun removeBlockWalkCollision(collision: CollisionFlagMap, base: CoordGrid) {
         val collisionFlag = blockWalkCollisionFlag ?: return
-        for (z in 0 until size) {
-            for (x in 0 until size) {
+        for (z in 0 until collisionSize) {
+            for (x in 0 until collisionSize) {
                 collision.remove(base.x + x, base.z + z, base.level, collisionFlag)
             }
         }

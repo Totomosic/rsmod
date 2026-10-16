@@ -52,6 +52,14 @@ public class Npc(
     override val collisionStrategy: CollisionStrategy?
         get() = moveRestrict.collisionStrategy
 
+    /** Set before registration so adding, moving and removing reserve the same footprint. */
+    override var collisionSize: Int = type.size
+        set(value) {
+            check(!isSlotAssigned) { "Cannot change collision footprint while registered." }
+            require(value in 1..size) { "Invalid collision footprint: $value (size=$size)" }
+            field = value
+        }
+
     override val heroPoints: HeroPoints = HeroPoints(type.heroCount)
 
     public val vars: VarNpcIntMap = VarNpcIntMap()

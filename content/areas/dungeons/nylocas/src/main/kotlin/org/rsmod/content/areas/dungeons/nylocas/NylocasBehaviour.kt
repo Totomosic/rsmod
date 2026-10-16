@@ -70,6 +70,7 @@ constructor(
         }
 
     fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn, teamSize: Int) {
+        npc.collisionSize = 1
         val pillar = spawn.pillar?.let { NpcAvatar(2).apply { coords = region.normal[it.source] } }
         val tiles = spawn.pillar?.let { pillarTiles(region, it, npc.size) }.orEmpty()
         // Wave 9's west small shares the big's south lane despite its separate table slot.
@@ -260,7 +261,7 @@ constructor(
     }
 
     private fun pillarTiles(region: Region, pillar: NylocasPillar, size: Int): List<CoordGrid> {
-        // The room exposes two walkable tiles on each of the pillar's two inward-facing sides.
+        // Contact uses the full footprint; terrain is checked only at each southwest anchor.
         val source = pillar.source
         val candidates = buildList {
             for (offset in 1 - size until 2) {
@@ -271,17 +272,9 @@ constructor(
             }
         }
         return candidates
-            .filter { tile ->
-                tile.x >= 3289 && tile.x + size <= 3303 && tile.z >= 4242 && tile.z + size <= 4255
-            }
+            .filter { tile -> tile.x in 3289..3302 && tile.z in 4242..4254 }
             .map { region.normal[it] }
-            .filter { tile ->
-                (0 until size).all { x ->
-                    (0 until size).all { z ->
-                        collision[tile.translate(x, z)] and TERRAIN_BLOCKERS == 0
-                    }
-                }
-            }
+            .filter { tile -> collision[tile] and TERRAIN_BLOCKERS == 0 }
     }
 
     private fun approachPillar(npc: Npc, state: State, pillar: NpcAvatar) {
@@ -292,21 +285,28 @@ constructor(
                 tile.x + npc.size == pillar.coords.x || tile.x == pillar.coords.x + pillar.size
             }
         // Replays approach the nearer face but favour its outer end, rather than
-        // the individually nearest contact tile. Keep inner tiles as fallbacks.
+        // the individually nearest contact tile. Align bigs' full footprint with
+        // that endpoint; keep other contact anchors as fallbacks.
         val available =
             faces.entries
                 .sortedBy { (_, tiles) -> tiles.minOf { npc.coords.chebyshevDistance(it) } }
                 .flatMap { (vertical, tiles) ->
                     tiles.sortedBy { tile ->
                         if (vertical) {
-                            if (pillar.coords.z > centre.z) -tile.z else tile.z
+                            val outer =
+                                if (pillar.coords.z > centre.z) pillar.coords.z + 2 - npc.size
+                                else pillar.coords.z
+                            kotlin.math.abs(tile.z - outer)
                         } else {
-                            if (pillar.coords.x > centre.x) -tile.x else tile.x
+                            val outer =
+                                if (pillar.coords.x > centre.x) pillar.coords.x + 2 - npc.size
+                                else pillar.coords.x
+                            kotlin.math.abs(tile.x - outer)
                         }
                     }
                 }
                 .filter { canOccupy(npc, it) }
-        // Ignore our own footprint during searches, but retain every other occupancy flag.
+        // Remove only our southwest reservation; overlapping neighbours keep theirs.
         npc.removeBlockWalkCollision(collision, npc.coords)
         try {
             for (tile in available) {
@@ -314,13 +314,18 @@ constructor(
                 // Prefer a complete diagonal-first approach, but fall back to routing
                 // if it gets stuck: a detour may need steps away from the destination.
                 val direct =
-                    steps.createPath(npc.coords, tile, npc.size, collision = PillarCollision)
+                    steps.createPath(
+                        npc.coords,
+                        tile,
+                        npc.collisionSize,
+                        collision = PillarCollision,
+                    )
                 if (direct.lastOrNull() == tile) {
                     state.waitingReturn = null
                     npc.walk(tile)
                     return
                 }
-                val route = routes.create(npc.avatar, tile, PillarCollision)
+                val route = routes.create(movementAvatar(npc), tile, PillarCollision)
                 if (route.success) {
                     state.waitingReturn = null
                     follow(npc, route)
@@ -328,7 +333,7 @@ constructor(
                 }
             }
             if (state.waitingReturn == null) {
-                val approach = routes.create(npc.avatar, pillar, PillarCollision)
+                val approach = routes.create(movementAvatar(npc), pillar, PillarCollision)
                 if (
                     approach.isNotEmpty() &&
                         state.pillarTiles.minOf { npc.coords.chebyshevDistance(it) } > 1
@@ -344,21 +349,14 @@ constructor(
     }
 
     private fun canOccupy(npc: Npc, tile: CoordGrid): Boolean =
-        (0 until npc.size).all { x ->
-            (0 until npc.size).all { z ->
-                val coord = tile.translate(x, z)
-                val ownTile =
-                    coord.x in npc.coords.x until npc.coords.x + npc.size &&
-                        coord.z in npc.coords.z until npc.coords.z + npc.size
-                val blockers = TERRAIN_BLOCKERS or if (ownTile) 0 else CollisionFlag.BLOCK_NPCS
-                collision[coord] and blockers == 0
-            }
-        }
+        collision[tile] and TERRAIN_BLOCKERS == 0 &&
+            (tile == npc.coords || collision[tile] and CollisionFlag.BLOCK_NPCS == 0)
 
     private fun pace(npc: Npc, state: State) {
         fun canStep(tile: CoordGrid): Boolean =
             canOccupy(npc, tile) &&
-                steps.validated(npc.coords, tile, npc.size, CollisionFlag.BLOCK_NPCS) == tile
+                steps.validated(npc.coords, tile, npc.collisionSize, CollisionFlag.BLOCK_NPCS) ==
+                    tile
 
         val back = state.waitingReturn
         if (back != null && back != npc.coords && canStep(back)) {
@@ -389,9 +387,12 @@ constructor(
 
     private fun route(npc: Npc, target: PathingEntityAvatar) {
         val collision = npc.collisionStrategy ?: return
-        val route = routes.create(npc.avatar, target, collision)
+        val route = routes.create(movementAvatar(npc), target, collision)
         follow(npc, route)
     }
+
+    private fun movementAvatar(npc: Npc): NpcAvatar =
+        NpcAvatar(npc.collisionSize).apply { coords = npc.coords }
 
     private fun follow(npc: Npc, route: Route) {
         npc.moveSpeed = MoveSpeed.Walk

@@ -72,7 +72,8 @@ class NylocasMovementTest {
             assertTrue(deps.npcs.all { deps.bounds.touches(it.avatar, target) })
             assertEquals(2, deps.npcs.map { it.coords }.toSet().size)
             val npcs = deps.npcs.toList()
-            assertFalse(deps.bounds.collides(npcs[0].avatar, npcs[1].avatar))
+            if (size == NylocasSize.Small)
+                assertFalse(deps.bounds.collides(npcs[0].avatar, npcs[1].avatar))
         }
     }
 

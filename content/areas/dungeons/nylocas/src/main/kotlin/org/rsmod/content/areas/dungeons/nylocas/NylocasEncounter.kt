@@ -113,9 +113,9 @@ constructor(
         npc.mode = NpcMode.None
         npc.setHunt(0)
         npc.aiTimer = 0
+        behaviour.add(npc, encounter.region, slot, spawn, encounter.teamSize)
         npcRepo.add(npc, Int.MAX_VALUE)
         npc.respawns = false
-        behaviour.add(npc, encounter.region, slot, spawn, encounter.teamSize)
     }
 
     private class Encounter(
