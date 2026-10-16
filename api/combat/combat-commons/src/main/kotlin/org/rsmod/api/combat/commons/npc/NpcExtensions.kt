@@ -1,6 +1,7 @@
 package org.rsmod.api.combat.commons.npc
 
 import kotlin.math.max
+import org.rsmod.api.combat.commons.isCombatDummy
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.params
@@ -30,6 +31,7 @@ public fun Npc.canRetaliate(): Boolean {
 }
 
 public fun Npc.queueCombatRetaliate(source: Player, delay: Int = 1) {
+    if (isCombatDummy()) return
     queue(queues.com_retaliate_player, delay)
     aggressivePlayer = source.uid
     lastCombat = max(lastCombat, currentMapClock)

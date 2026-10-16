@@ -89,7 +89,7 @@ class ScytheOfViturWeapons @Inject constructor(private val random: GameRandom) :
                     blockType = attack.type,
                     multiplier = 1.0,
                 )
-            return if (accurate && maxHit > 0) damageRandom.rollDamage(maxHit) else 0
+            return if (accurate && maxHit > 0) damageRandom.rollDamage(maxHit, target) else 0
         }
     }
 }

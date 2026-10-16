@@ -310,6 +310,16 @@ constructor(
         npc.removeBlockWalkCollision(collision, npc.coords)
         try {
             for (tile in available) {
+                // Shortest-path waypoints favour cardinal steps before diagonals.
+                // Prefer a complete diagonal-first approach, but fall back to routing
+                // if it gets stuck: a detour may need steps away from the destination.
+                val direct =
+                    steps.createPath(npc.coords, tile, npc.size, collision = PillarCollision)
+                if (direct.lastOrNull() == tile) {
+                    state.waitingReturn = null
+                    npc.walk(tile)
+                    return
+                }
                 val route = routes.create(npc.avatar, tile, PillarCollision)
                 if (route.success) {
                     state.waitingReturn = null

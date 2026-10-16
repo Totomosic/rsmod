@@ -367,6 +367,112 @@ class NylocasMovementTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource("SouthEast, false", "EastNorth, false", "SouthEast, true", "EastNorth, true")
+    fun `wave one pillar approaches match recorded diagonal then straight steps`(
+        slot: NylocasSlot,
+        fullWave: Boolean,
+        state: GameTestState,
+    ) {
+        // Recorded in duo df03c4dc: south 56526 ticks 14-23, east 56527 ticks 13-22.
+        val expected =
+            when (slot) {
+                NylocasSlot.SouthEast ->
+                    listOf(
+                        3296 to 4243,
+                        3297 to 4244,
+                        3298 to 4245,
+                        3299 to 4246,
+                        3300 to 4247,
+                        3301 to 4248,
+                        3301 to 4249,
+                        3301 to 4250,
+                        3301 to 4251,
+                        3301 to 4252,
+                    )
+                NylocasSlot.EastNorth ->
+                    listOf(
+                        3301 to 4249,
+                        3300 to 4250,
+                        3299 to 4251,
+                        3298 to 4252,
+                        3297 to 4253,
+                        3296 to 4254,
+                        3295 to 4254,
+                        3294 to 4254,
+                        3293 to 4254,
+                        3292 to 4254,
+                    )
+                else -> error("Not a wave one pillar slot: $slot")
+            }.map { (x, z) -> CoordGrid(x, z, 0) }
+        val first = NylocasWaveTable().waves.first()
+        val wave =
+            if (fullWave) first
+            else
+                NylocasWave(
+                    4,
+                    southEast = first.southEast.takeIf { slot == NylocasSlot.SouthEast },
+                    eastNorth = first.eastNorth.takeIf { slot == NylocasSlot.EastNorth },
+                )
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val spawn = wave.spawns.single { it.first == slot }.second
+            val npc = deps.npcs.single { it.coords == room.normal[spawn.source(slot)] }
+            advanceUntil(predicate = { npc.coords == room.normal[slot.entry] }, timeoutTicks = 15)
+            val actual =
+                List(expected.size) {
+                    val coords = deps.regions.normalizeCoords(npc.coords)
+                    advance()
+                    coords
+                }
+            assertEquals(expected, actual)
+            assertEquals(room.normal[expected.last()], npc.coords)
+        }
+    }
+
+    @Test
+    fun GameTestState.`pillar detours can temporarily move away from the destination`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    westNorth =
+                        NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic, NylocasPillar.NorthEast),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val npc = deps.npcs.single()
+            advanceUntil(
+                predicate = { npc.coords == room.normal[NylocasSlot.WestNorth.entry] },
+                timeoutTicks = 15,
+            )
+            advance()
+            npc.telejump(room.normal[CoordGrid(3297, 4249, 0)])
+            // A U-shaped wall requires a retreat south before approaching the pillar.
+            for (x in 3293..3301) {
+                deps.collision.add(room.normal[CoordGrid(x, 4251, 0)], CollisionFlag.LOC)
+            }
+            for (z in 4246..4251) {
+                for (x in listOf(3293, 3301)) {
+                    deps.collision.add(room.normal[CoordGrid(x, z, 0)], CollisionFlag.LOC)
+                }
+            }
+            advance(ticks = 30)
+            val pillar = NpcAvatar(2).apply { coords = room.normal[NylocasPillar.NorthEast.source] }
+            assertTrue(deps.bounds.touches(npc.avatar, pillar))
+        }
+
     @Test
     fun GameTestState.`player targets are replaced on departure and stay inside this instance`() {
         val wave = NylocasWave(4, westNorth = NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic))

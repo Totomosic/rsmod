@@ -2,6 +2,7 @@ package org.rsmod.content.other.special.attacks.ranged
 
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.rollDamage
 import org.rsmod.api.combat.manager.RangedAmmoManager
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.categories
@@ -232,8 +233,12 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
                     multiplier = multiplier,
                     boltSpecDamage = 0,
                 )
-            val first = if (!accuracySuccess()) 0 else random.of(0..damage).coerceIn(damageRange)
-            val second = if (!accuracySuccess()) 0 else random.of(0..damage).coerceIn(damageRange)
+            val first =
+                if (!accuracySuccess()) 0
+                else random.rollDamage(0..damage, target).coerceIn(damageRange)
+            val second =
+                if (!accuracySuccess()) 0
+                else random.rollDamage(0..damage, target).coerceIn(damageRange)
             return DescentHit(first, second)
         }
 

@@ -18,6 +18,7 @@ import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.constants
+import org.rsmod.api.config.refs.npcs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.walktriggers
@@ -49,6 +50,51 @@ import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class CombatSpecialAttacksTest {
+    @Test
+    fun GameTestState
+        .`godsword specials always hit their full boosted maximum on combat dummies`() =
+        runSpecialsTest { deps ->
+            val npc = spawnDummy(combatDummy = true)
+            val base =
+                deps.attacks.calculateMeleeMaxHit(
+                    player,
+                    npc,
+                    MeleeAttackType.Slash,
+                    MeleeAttackStyle.Accurate,
+                    1.1,
+                )
+            val maximum = (base * 1.25).toInt()
+            assertTrue(maximum > 1)
+            random.next = MISS_ROLL
+            useMeleeSpecial(deps, special_objs.armadyl_godsword, npc, MeleeAttackType.Slash)
+            advance()
+            assertEquals(DUMMY_HITPOINTS - maximum, npc.hitpoints)
+        }
+
+    @Test
+    fun GameTestState.`dragon claws use the maximum accurate cascade on combat dummies`() =
+        runSpecialsTest { deps ->
+            val npc = spawnDummy(combatDummy = true)
+            val maximum =
+                deps.attacks.calculateMeleeMaxHit(
+                    player,
+                    npc,
+                    MeleeAttackType.Slash,
+                    MeleeAttackStyle.Accurate,
+                    1.0,
+                )
+            val first = maximum - 1
+            val second = first / 2
+            val third = second / 2
+            assertTrue(first > 1)
+            random.next = MISS_ROLL
+            useMeleeSpecial(deps, special_objs.dragon_claws, npc, MeleeAttackType.Slash)
+            advance()
+            assertEquals(DUMMY_HITPOINTS - first - second, npc.hitpoints)
+            advance()
+            assertEquals(DUMMY_HITPOINTS - first - second - third - (third + 1), npc.hitpoints)
+        }
+
     @Test
     fun GameTestState.`spec weapons are registered with their energy requirements`() =
         runSpecialsTest { deps ->
@@ -303,8 +349,17 @@ class CombatSpecialAttacksTest {
         return target
     }
 
-    private fun GameTestScope.spawnDummy(): Npc {
-        val npc = spawnNpc(CoordGrid(0, 50, 50, 0, 0), dummy)
+    private fun GameTestScope.spawnDummy(combatDummy: Boolean = false): Npc {
+        val type =
+            if (combatDummy)
+                npcTypeFactory.create(id = npcs.combat_dummy.id) {
+                    name = "Max hit dummy"
+                    hitpoints = DUMMY_HITPOINTS
+                    defence = DUMMY_DEFENCE
+                    defaultMode = NpcMode.None
+                }
+            else dummy
+        val npc = spawnNpc(CoordGrid(0, 50, 50, 0, 0), type)
         player.placeAt(npc.coords.translateZ(1))
         player.stats[stats.attack] = 99
         player.stats[stats.strength] = 99

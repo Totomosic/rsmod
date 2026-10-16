@@ -2,6 +2,7 @@ package org.rsmod.content.other.special.attacks.melee
 
 import kotlin.math.max
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.rollDamage
 import org.rsmod.api.config.constants
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.specials.SpecialAttackManager
@@ -93,7 +94,7 @@ class DragonClawsSpecialAttack : SpecialAttackMap {
                     multiplier = 1.0,
                 )
 
-            fun roll(min: Int, max: Int): Int = random.of(min, max(min, max))
+            fun roll(min: Int, max: Int): Int = random.rollDamage(min..max(min, max), target)
 
             if (accurate()) {
                 val first = roll(maxHit / 2, maxHit - 1)

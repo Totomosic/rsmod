@@ -182,7 +182,7 @@ class NylocasEncounterTest {
         }
 
     @Test
-    fun GameTestState.`separate instances spawn their own waves`() =
+    fun GameTestState.`separate instances start their clocks on their own barrier entry`() =
         runInjectedGameTest(
             Dependencies::class,
             firstWave(),
@@ -201,9 +201,15 @@ class NylocasEncounterTest {
             deps.raid.start(player)
             deps.raid.start(other)
             player.opLoc1(firstBarrier)
+            advance(ticks = 2)
             other.opLoc1(secondBarrier)
-            advance(ticks = 4)
+            advance(ticks = 2)
             assertEquals(0, deps.npcs.count())
+            advance()
+            assertEquals(3, deps.npcs.count())
+            assertTrue(deps.npcs.all { deps.regions[it.coords]?.uid == first.uid })
+            advance()
+            assertEquals(3, deps.npcs.count())
             advance()
 
             assertEquals(6, deps.npcs.count())
@@ -275,8 +281,8 @@ class NylocasEncounterTest {
         }
 
     @ParameterizedTest
-    @ValueSource(ints = [0, 1, 2, 3])
-    fun `entry preserves the phase established before the barrier`(
+    @ValueSource(ints = [0, 1, 2, 3, 20, 21, 22, 23])
+    fun `barrier entry is tick zero regardless of the wait after starting the raid`(
         delay: Int,
         state: GameTestState,
     ) =
@@ -292,13 +298,16 @@ class NylocasEncounterTest {
             advance()
             deps.raid.start(player)
             advance(ticks = delay)
+            assertEquals(0, deps.npcs.count())
+            assertEquals(0, player.vars[tob_varbits.progress_type])
             player.opLoc1(barrier)
             advance()
-            val countdown = 4 + Math.floorMod(-delay, 4)
-            advance(ticks = countdown - 1)
+            assertEquals(1, player.vars[tob_varbits.progress_type])
+            advance(ticks = 3)
             assertEquals(0, deps.npcs.count())
             advance()
             assertEquals(3, deps.npcs.count())
+            assertEquals(2, player.vars[tob_varbits.progress_type])
         }
 
     // These tests isolate entry/countdown/party behavior from later waves.

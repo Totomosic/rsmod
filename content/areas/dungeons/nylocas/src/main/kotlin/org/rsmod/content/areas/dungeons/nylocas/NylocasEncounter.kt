@@ -54,10 +54,10 @@ constructor(
         if (entering) {
             encounters.getOrPut(region.uid) {
                 raid.beginRoom(region)
-                val earliest = clock + waves.waves.first().ticksAfterPrevious
+                // The first crossing is room tick zero, independent of time spent outside.
                 Encounter(
                     region,
-                    waveCycle = earliest + Math.floorMod(raid.wavePhase(region) - earliest, 4),
+                    waveCycle = clock + waves.waves.first().ticksAfterPrevious,
                     teamSize = raid.teamSize(region),
                 )
             }

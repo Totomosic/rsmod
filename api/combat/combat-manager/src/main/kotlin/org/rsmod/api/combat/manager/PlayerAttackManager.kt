@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import kotlin.math.min
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.fx.MeleeAnimationAndSound
+import org.rsmod.api.combat.commons.isCombatDummy
 import org.rsmod.api.combat.commons.magic.MagicSpell
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.combat.commons.npc.combatPlayDefendAnim
@@ -527,6 +528,7 @@ constructor(
         blockType: MeleeAttackType?,
         multiplier: Double,
     ): Boolean {
+        if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
                 rollMeleeAccuracy(source, target, attackType, attackStyle, blockType, multiplier)
@@ -595,7 +597,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateMeleeMaxHit(source, target, attackType, attackStyle, multiplier)
-        return random.rollDamage(maxHit)
+        return random.rollDamage(maxHit, target)
     }
 
     /**
@@ -778,6 +780,7 @@ constructor(
         blockType: RangedAttackType?,
         multiplier: Double,
     ): Boolean {
+        if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
                 rollRangedAccuracy(source, target, attackType, attackStyle, blockType, multiplier)
@@ -853,7 +856,7 @@ constructor(
                 multiplier = multiplier,
                 boltSpecDamage = boltSpecDamage,
             )
-        return random.rollDamage(maxHit)
+        return random.rollDamage(maxHit, target)
     }
 
     /**
@@ -1119,10 +1122,11 @@ constructor(
         spellbook: Spellbook?,
         sunfireRune: Boolean,
     ): Boolean =
-        when (target) {
-            is Npc -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
-            is Player -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
-        }
+        target.isCombatDummy() ||
+            when (target) {
+                is Npc -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
+                is Player -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
+            }
 
     private fun rollSpellAccuracy(
         source: Player,
@@ -1194,7 +1198,7 @@ constructor(
                 attackRate = attackRate,
                 sunfireRune = sunfireRune,
             )
-        return random.of(hitRange)
+        return random.rollDamage(hitRange, target)
     }
 
     /**
@@ -1303,6 +1307,7 @@ constructor(
         attackStyle: MagicAttackStyle?,
         multiplier: Double,
     ): Boolean {
+        if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> rollStaffAccuracy(source, target, attackStyle, multiplier)
             is Player -> rollStaffAccuracy(source, target, attackStyle, multiplier)
@@ -1357,7 +1362,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateStaffMaxHit(source, target, baseMaxHit, multiplier)
-        return random.rollDamage(maxHit)
+        return random.rollDamage(maxHit, target)
     }
 
     /**

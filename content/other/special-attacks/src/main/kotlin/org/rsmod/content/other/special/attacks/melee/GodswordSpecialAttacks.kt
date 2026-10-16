@@ -165,7 +165,7 @@ class GodswordSpecialAttacks : SpecialAttackMap {
             if (maxHit <= 0) {
                 return 0
             }
-            return random.rollDamage(maxHit)
+            return random.rollDamage(maxHit, target)
         }
 
         private fun ProtectedAccess.healingBlade(damage: Int) {

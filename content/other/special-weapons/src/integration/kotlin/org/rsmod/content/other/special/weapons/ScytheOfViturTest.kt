@@ -14,6 +14,7 @@ import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
+import org.rsmod.api.config.refs.npcs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
@@ -41,6 +42,16 @@ import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class ScytheOfViturTest {
+    @Test
+    fun GameTestState.`combat dummies receive the maximum of each size based splat`() =
+        runScytheTest { deps ->
+            val npc = spawnDummy(npcSize = 3, combatDummy = true)
+            setMaxHit(deps, npc, 51)
+            random.next = MISS_ROLL
+            useScythe(deps, npc)
+            assertEquals(listOf(51 to 1, 25 to 1, 12 to 1), npc.pendingHits())
+        }
+
     @Test
     fun GameTestState.`one tile npc takes one full strength hit`() = assertSizeHits(1, listOf(51))
 
@@ -161,9 +172,9 @@ class ScytheOfViturTest {
         }
     }
 
-    private fun GameTestScope.spawnDummy(npcSize: Int): Npc {
+    private fun GameTestScope.spawnDummy(npcSize: Int, combatDummy: Boolean = false): Npc {
         val type =
-            npcTypeFactory.create {
+            npcTypeFactory.create(id = if (combatDummy) npcs.combat_dummy.id else 0) {
                 name = "Dummy"
                 size = npcSize
                 hitpoints = DUMMY_HITPOINTS

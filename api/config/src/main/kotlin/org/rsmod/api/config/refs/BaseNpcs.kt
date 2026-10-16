@@ -7,6 +7,7 @@ import org.rsmod.api.type.refs.npc.NpcReferences
 typealias npcs = BaseNpcs
 
 object BaseNpcs : NpcReferences() {
+    val combat_dummy = find("poh_combat_dummy_npc")
     val man = find("man", 1329978397240899572)
     val man2 = find("man2", 1329978397240899573)
     val man3 = find("man3", 1329978397240899574)
