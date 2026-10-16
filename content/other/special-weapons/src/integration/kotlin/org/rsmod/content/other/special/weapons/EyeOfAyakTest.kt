@@ -7,6 +7,8 @@ import kotlin.reflect.KClass
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.styles.AttackStyle
 import org.rsmod.api.combat.commons.styles.MagicAttackStyle
@@ -19,12 +21,15 @@ import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varobjs
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.inv.HeldOpScript
 import org.rsmod.api.inv.HeldUOpScript
+import org.rsmod.api.obj.charges.ObjChargeManager
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
@@ -50,6 +55,61 @@ import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class EyeOfAyakTest {
+    @ParameterizedTest
+    @CsvSource(
+        "eye_of_ayak, 0, 16, 0",
+        "eye_of_ayak, 1, 16, 0",
+        "eye_of_ayak, 3, 10, 8",
+        "tumekens_shadow, 0, 16, 0",
+        "tumekens_shadow, 1, 16, 0",
+        "tumekens_shadow, 3, 10, 8",
+    )
+    fun `powered staff XP lets death indicators predict a lethal hit before impact`(
+        weaponName: String,
+        comMode: Int,
+        expectedMagicXp: Int,
+        expectedDefenceXp: Int,
+        state: GameTestState,
+    ) =
+        state.runEyeTest { deps ->
+            val npc =
+                spawnDummy().apply {
+                    hitpoints = 8
+                    combatXpMultiplier = 1000
+                }
+            if (weaponName == "eye_of_ayak") {
+                equipEye(deps)
+            } else {
+                player.worn[Wearpos.RightHand.slot] = InvObj(objs.tumekens_shadow_uncharged)
+                deps.objCharges.addCharges(
+                    player.worn,
+                    Wearpos.RightHand.slot,
+                    10,
+                    varobjs.tumeken_charges,
+                    20_000,
+                )
+                player.stats[stats.magic] = 99
+            }
+            VarPlayerIntMapSetter.set(player, varps.com_mode, comMode)
+            val weapon = checkNotNull(player.worn[Wearpos.RightHand.slot])
+            val style = MagicAttackStyle.from(deps.styles.resolve(deps.objTypes[weapon], comMode))
+            val magicBefore = player.statMap.getXP(stats.magic)
+            val defenceBefore = player.statMap.getXP(stats.defence)
+            random.next = HIT_ROLL
+            random.then = 20
+            cast(deps, npc, style)
+            val magicXp = player.statMap.getXP(stats.magic) - magicBefore
+            val defenceXp = player.statMap.getXP(stats.defence) - defenceBefore
+            assertEquals(expectedMagicXp, magicXp)
+            assertEquals(expectedDefenceXp, defenceXp)
+            // Nylo Death Indicators reads COM_MODE=3 as defensive and uses Defence XP as damage.
+            val predictedDamage = if (comMode == 3) defenceXp else magicXp / 2
+            assertEquals(8, predictedDamage)
+            assertEquals(8, npc.hitpoints)
+            assertTrue(npc.pendingHits().single().second > 0)
+            assertEquals(npc.slotId, player.faceEntity.npcSlot)
+        }
+
     @Test
     fun GameTestState.`both items resolve to powered staff attacks at speed three`() =
         runEyeTest { deps ->
@@ -339,10 +399,14 @@ class EyeOfAyakTest {
         player.stats[stats.magic] = 99
     }
 
-    private fun GameTestScope.cast(deps: EyeTestDependencies, target: PathingEntity) {
+    private fun GameTestScope.cast(
+        deps: EyeTestDependencies,
+        target: PathingEntity,
+        style: MagicAttackStyle? = MagicAttackStyle.Accurate,
+    ) {
         val obj = checkNotNull(player.worn[Wearpos.RightHand.slot])
         val weapon = checkNotNull(deps.registry.getMagic(obj))
-        val attack = CombatAttack.Staff(obj, MagicAttackStyle.Accurate)
+        val attack = CombatAttack.Staff(obj, style)
         player.withProtectedAccess {
             val handled =
                 when (target) {
@@ -386,6 +450,7 @@ class EyeOfAyakTest {
         val objTypes: ObjTypeList,
         val types: AttackTypes,
         val styles: AttackStyles,
+        val objCharges: ObjChargeManager,
     )
 
     private object EyeTestModule : AbstractModule() {
