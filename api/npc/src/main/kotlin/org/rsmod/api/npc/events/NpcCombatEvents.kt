@@ -1,11 +1,16 @@
 package org.rsmod.api.npc.events
 
 import org.rsmod.events.KeyedEvent
+import org.rsmod.events.UnboundEvent
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitBuilder
 
 public class NpcHitEvents {
+    /** Published once when a hit kills an NPC, before its death animation or drops. */
+    public data class Kill(public val npc: Npc, public val killer: Player) : UnboundEvent
+
     public data class Modify(
         public val npc: Npc,
         public val hit: HitBuilder,

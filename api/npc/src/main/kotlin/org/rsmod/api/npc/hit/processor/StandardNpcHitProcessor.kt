@@ -64,6 +64,12 @@ constructor(private val playerList: PlayerList, private val eventBus: EventBus) 
         val queueDeath = npc.hitpoints == 0 && queues.death !in npc.queueList
         if (queueDeath) {
             queueDeath()
+            if (hit.damage > 0) {
+                val killer = npc.findHero(playerList)
+                if (killer != null) {
+                    eventBus.publish(NpcHitEvents.Kill(npc, killer))
+                }
+            }
         }
 
         npc.showHitmark(hit.hitmark)
