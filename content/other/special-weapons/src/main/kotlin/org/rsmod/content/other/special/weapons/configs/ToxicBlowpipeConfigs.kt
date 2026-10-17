@@ -4,13 +4,40 @@ import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.varobjs
+import org.rsmod.api.type.builders.proj.ProjAnimBuilder
 import org.rsmod.api.type.editors.obj.ObjEditor
+import org.rsmod.api.type.refs.proj.ProjAnimReferences
 import org.rsmod.api.type.refs.seq.SeqReferences
+import org.rsmod.api.type.refs.spot.SpotanimReferences
 import org.rsmod.game.type.obj.WeaponCategory
 
 object BlowpipeSeqs : SeqReferences() {
     val attack = find("snakeboss_blowpipe_attack")
     val blazing_attack = find("snakeboss_blowpipe_attack_ornament")
+    val special = find("toxic_blowpipe_special_updated")
+}
+
+object BlowpipeSpots : SpotanimReferences() {
+    val special = find("toxic_blowpipe_specialattack")
+}
+
+object BlowpipeProjs : ProjAnimReferences() {
+    val special = find("blowpipe_special")
+}
+
+internal object BlowpipeProjBuilds : ProjAnimBuilder() {
+    init {
+        build("blowpipe_special") {
+            startHeight = 163
+            endHeight = 146
+            delay = 32
+            angle = 15
+            // One tick longer than a thrown dart; adjacent shots use the thrown timing instead.
+            lengthAdjustment = 30
+            progress = 11
+            stepMultiplier = 5
+        }
+    }
 }
 
 internal object ToxicBlowpipeObjEditor : ObjEditor() {

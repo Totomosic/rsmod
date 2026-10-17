@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
 import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -13,6 +14,7 @@ import org.rsmod.api.combat.commons.styles.AttackStyle
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
 import org.rsmod.api.combat.commons.types.AttackType
 import org.rsmod.api.combat.commons.types.RangedAttackType
+import org.rsmod.api.combat.formulas.accuracy.ranged.PvNRangedAccuracy
 import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.combat.weapon.WeaponSpeeds
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
@@ -20,10 +22,12 @@ import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.npcs
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.synths
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.inv.HeldOpScript
@@ -33,8 +37,14 @@ import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.player.worn.Blowpipe
 import org.rsmod.api.registry.zone.ZoneUpdateMap
+import org.rsmod.api.specials.SpecialAttack
+import org.rsmod.api.specials.SpecialAttackModule
+import org.rsmod.api.specials.SpecialAttackRegistry
+import org.rsmod.api.specials.SpecialAttackType
+import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
@@ -57,6 +67,281 @@ import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 
 class ToxicBlowpipeTest {
+    @ParameterizedTest
+    @CsvSource(
+        "1000, 500, 10, true",
+        "500, 0, 10, true",
+        "499, 499, 10, false",
+        "1000, 1000, 0, false",
+    )
+    fun `combat deducts fifty percent energy only when the special fires`(
+        initialEnergy: Int,
+        remainingEnergy: Int,
+        scales: Int,
+        specialFires: Boolean,
+        state: GameTestState,
+    ) =
+        state.runBlowpipeTest(combat = true) { deps ->
+            val npc = spawnDummy()
+            equip(scales = scales)
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 50)
+            allocZoneCollision(player.coords)
+            allocZoneCollision(npc.coords)
+            advance(ticks = 20) // Let the test player's initial combat clocks expire.
+            player.specialEnergy = initialEnergy
+            player.selectedSpecial = SpecialAttackType.Weapon.varValue
+            rollShot(damage = 7)
+            player.opNpc2(npc)
+            advance()
+            assertEquals(remainingEnergy, player.vars[varps.sa_energy])
+            assertEquals(if (specialFires) 53 else 50, player.hitpoints)
+            if (scales > 0) {
+                assertEquals(1, npc.pendingHits().size)
+                assertEquals(9, Blowpipe.darts(player.righthand))
+            } else {
+                assertTrue(npc.pendingHits().isEmpty())
+                assertEquals(10, Blowpipe.darts(player.righthand))
+            }
+        }
+
+    @Test
+    fun GameTestState.`adjacency uses the edge of a large enemy including diagonal tiles`() {
+        for (diagonal in listOf(false, true)) {
+            runBlowpipeTest { deps ->
+                val npc =
+                    spawnNpc(
+                        CoordGrid(3200, 3200),
+                        npcTypeFactory.create {
+                            name = "Large dummy"
+                            size = 3
+                            hitpoints = 200
+                            defaultMode = NpcMode.None
+                        },
+                    )
+                player.placeAt(npc.coords.translate(3, if (diagonal) 3 else 1))
+                equip()
+                rollShot(damage = 7)
+                shoot(deps, npc)
+                rollShot(damage = 7)
+                assertTrue(useSpecial(deps, npc))
+                val projectiles =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<MapProjAnimV2>()
+                assertEquals(projectiles.first().endTime, projectiles.last().endTime)
+                val hits = npc.pendingHits()
+                assertEquals(hits.first().second, hits.last().second)
+            }
+        }
+    }
+
+    @Test
+    fun GameTestState.`both loaded cosmetics have a fifty percent ranged special`() =
+        runBlowpipeTest { deps ->
+            for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
+                val special = deps.specials[InvObj(pipe)]
+                assertTrue(special is SpecialAttack.Ranged)
+                assertEquals(500, (special as SpecialAttack.Ranged).energyInHundreds)
+            }
+        }
+
+    @ParameterizedTest
+    @CsvSource("1, false", "2, false", "5, false", "7, false", "1, true", "5, true")
+    fun `special projectile takes one extra tick except at adjacent range`(
+        distance: Int,
+        playerTarget: Boolean,
+        state: GameTestState,
+    ) {
+        for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
+            state.runBlowpipeTest { deps ->
+                val target =
+                    if (playerTarget) {
+                        registerPlayer(CoordGrid(3200, 3200)).also {
+                            it.setBaseLevel(stats.hitpoints, 99)
+                            it.setCurrentLevel(stats.hitpoints, 99)
+                        }
+                    } else {
+                        spawnDummy()
+                    }
+                player.placeAt(target.coords.translateZ(-distance))
+                equip(pipe = pipe)
+                val style =
+                    if (distance == 7) RangedAttackStyle.Longrange else RangedAttackStyle.Rapid
+                rollShot(damage = 7)
+                shoot(deps, target, style)
+                val normal =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<MapProjAnimV2>()
+                        .single()
+                rollShot(damage = 7)
+                assertTrue(useSpecial(deps, target, style))
+                val special =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<MapProjAnimV2>()
+                        .last()
+                assertEquals(1043, special.id)
+                assertTrue(normal.id != special.id)
+                assertEquals(normal.endTime + if (distance > 1) 30 else 0, special.endTime)
+                assertEquals(
+                    if (distance == 7) 3 else 2,
+                    player.actionDelay - player.currentMapClock,
+                )
+                if (target is Npc) {
+                    val hits = target.pendingHits()
+                    assertEquals(
+                        hits.first().second + if (distance > 1) 1 else 0,
+                        hits.last().second,
+                    )
+                }
+                assertEquals(8, Blowpipe.darts(player.righthand))
+                assertEquals(8, Blowpipe.scales(player.righthand))
+                val sound =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<SoundArea>()
+                        .last()
+                assertEquals(0, sound.delay)
+                assertEquals(ZoneGrid.from(player.coords).x, sound.xInZone)
+                assertEquals(ZoneGrid.from(player.coords).z, sound.zInZone)
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("0, 50, 50", "1, 50, 50", "7, 50, 53", "8, 50, 54", "19, 95, 99")
+    fun `healing rounds down before enemy HP clamping and never overheals`(
+        damage: Int,
+        initialHp: Int,
+        healedHp: Int,
+        state: GameTestState,
+    ) {
+        for (playerTarget in listOf(false, true)) {
+            state.runBlowpipeTest { deps ->
+                val target =
+                    if (playerTarget) {
+                        registerPlayer(CoordGrid(3200, 3200)).also {
+                            it.setBaseLevel(stats.hitpoints, 99)
+                            it.setCurrentLevel(stats.hitpoints, 2)
+                        }
+                    } else {
+                        spawnDummy().also {
+                            it.hitpoints = 2
+                            it.regenClock = Int.MAX_VALUE
+                        }
+                    }
+                player.placeAt(target.coords.translateZ(-1))
+                player.setBaseLevel(stats.hitpoints, 99)
+                player.setCurrentLevel(stats.hitpoints, initialHp)
+                equip()
+                random.next = if (damage == 0) 9999 else 0
+                if (damage > 0) random.then = damage
+                random.then = 4
+                random.then = 1
+
+                assertTrue(useSpecial(deps, target))
+                assertEquals(healedHp, player.hitpoints)
+                advance(ticks = 2)
+                assertEquals(
+                    (2 - damage).coerceAtLeast(0),
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun GameTestState.`special doubles accuracy at the exact hit chance boundary`() {
+        for (miss in listOf(false, true)) {
+            runBlowpipeTest { deps ->
+                val npc = spawnDummy()
+                equip()
+                fun chance(multiplier: Double) =
+                    deps.accuracy.getHitChance(
+                        player,
+                        npc,
+                        RangedAttackType.Light,
+                        RangedAttackStyle.Rapid,
+                        RangedAttackType.Light,
+                        multiplier,
+                    )
+                val threshold = chance(2.0)
+                assertTrue(threshold > chance(1.99))
+                random.next = threshold - if (miss) 0 else 1
+                if (!miss) random.then = 7
+                random.then = 4
+                random.then = 1
+                assertTrue(useSpecial(deps, npc))
+                assertEquals(if (miss) 0 else 7, npc.pendingHits().single().first.damage)
+            }
+        }
+    }
+
+    @Test
+    fun GameTestState.`special boosts max hit by fifty percent including the last dart`() =
+        runBlowpipeTest { deps ->
+            val npc =
+                spawnNpc(
+                    CoordGrid(3200, 3200),
+                    npcTypeFactory.create(id = npcs.combat_dummy.id) {
+                        name = "Max hit dummy"
+                        hitpoints = 200
+                        defaultMode = NpcMode.None
+                    },
+                )
+            player.placeAt(npc.coords.translateZ(1))
+            equip(darts = 1)
+            val base =
+                deps.attacks.calculateRangedMaxHit(
+                    player,
+                    npc,
+                    RangedAttackType.Light,
+                    RangedAttackStyle.Rapid,
+                    1.0,
+                    0,
+                )
+            random.next = 4 // No accuracy or damage roll on a max hit dummy.
+            random.then = 1
+            assertTrue(useSpecial(deps, npc))
+            assertEquals(20, base)
+            assertEquals(30, npc.pendingHits().single().first.damage)
+            assertEquals(0, Blowpipe.darts(player.righthand))
+        }
+
+    @Test
+    fun GameTestState
+        .`special refuses missing ammunition without requesting an energy deduction`() {
+        for ((scales, darts) in listOf(10 to 0, 0 to 10)) {
+            runBlowpipeTest { deps ->
+                val npc = spawnDummy()
+                equip(scales = scales, darts = darts)
+                val original = player.righthand
+                assertFalse(useSpecial(deps, npc))
+                assertEquals(original, player.righthand)
+                assertTrue(npc.pendingHits().isEmpty())
+                assertTrue(
+                    deps.zoneUpdates[ZoneKey.from(player.coords)]?.toList().orEmpty().none {
+                        it is SoundArea || it is MapProjAnimV2
+                    }
+                )
+            }
+        }
+    }
+
+    private fun GameTestScope.useSpecial(
+        deps: Dependencies,
+        target: PathingEntity,
+        style: RangedAttackStyle = RangedAttackStyle.Rapid,
+    ): Boolean {
+        val obj = checkNotNull(player.righthand)
+        val special = checkNotNull(deps.specials[obj]) as SpecialAttack.Ranged
+        val attack = CombatAttack.Ranged(obj, RangedAttackType.Light, style)
+        var activated = false
+        player.withProtectedAccess { activated = special.attack(this, target, attack) }
+        return activated
+    }
+
     @ParameterizedTest
     @CsvSource("1, 0", "1, 9999", "5, 0", "5, 9999")
     fun `each shot plays one sound immediately at the player tile`(
@@ -495,11 +780,15 @@ class ToxicBlowpipeTest {
         iterator.cleanUp()
     }
 
-    private fun GameTestState.runBlowpipeTest(testBody: GameTestScope.(Dependencies) -> Unit) =
+    private fun GameTestState.runBlowpipeTest(
+        combat: Boolean = false,
+        testBody: GameTestScope.(Dependencies) -> Unit,
+    ) =
         runInjectedGameTest(
             Dependencies::class,
             TestModule,
             weaponScript,
+            specialAttackScript,
             NpcHitScript::class,
             PlayerHitScript::class,
             WeaponAttackStylesScript::class,
@@ -507,6 +796,7 @@ class ToxicBlowpipeTest {
             ToxicBlowpipeCharging::class,
             HeldOpScript::class,
             HeldUOpScript::class,
+            *if (combat) arrayOf(pvnCombatScript) else emptyArray(),
             testBody = testBody,
         )
 
@@ -520,11 +810,15 @@ class ToxicBlowpipeTest {
         val types: AttackTypes,
         val attacks: PlayerAttackManager,
         val zoneUpdates: ZoneUpdateMap,
+        val specials: SpecialAttackRegistry,
+        val accuracy: PvNRangedAccuracy,
     )
 
     private object TestModule : AbstractModule() {
         override fun configure() {
             install(WeaponModule())
+            install(SpecialAttackModule())
+            install(MagicSpellModule())
             install(RangedWeaponsModule())
             bind(AttackTypes::class.java).`in`(Scopes.SINGLETON)
             bind(AttackStyles::class.java).`in`(Scopes.SINGLETON)
@@ -532,9 +826,22 @@ class ToxicBlowpipeTest {
     }
 
     private companion object {
+        private var Player.specialEnergy by intVarp(varps.sa_energy)
+        private var Player.selectedSpecial by intVarp(varps.sa_attack)
+
         @Suppress("UNCHECKED_CAST")
         private val weaponScript =
             Class.forName("org.rsmod.api.weapons.scripts.WeaponScript").kotlin
+                as KClass<out PluginScript>
+
+        @Suppress("UNCHECKED_CAST")
+        private val specialAttackScript =
+            Class.forName("org.rsmod.api.specials.scripts.SpecialAttackScript").kotlin
+                as KClass<out PluginScript>
+
+        @Suppress("UNCHECKED_CAST")
+        private val pvnCombatScript =
+            Class.forName("org.rsmod.api.combat.scripts.PvNCombatScript").kotlin
                 as KClass<out PluginScript>
 
         private val dummy =
@@ -543,6 +850,7 @@ class ToxicBlowpipeTest {
                 size = 1
                 hitpoints = 200
                 defence = 50
+                op[1] = "Attack"
                 defaultMode = NpcMode.None
             }
     }
