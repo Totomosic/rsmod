@@ -98,6 +98,7 @@ import org.rsmod.game.type.npc.NpcTypeList
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
+import org.rsmod.routefinder.collision.CollisionFlagMap
 
 class NylocasDamageTest {
     @Test
@@ -359,6 +360,65 @@ class NylocasDamageTest {
                 primary.pendingSpotanims.map { EntitySpotanim(it) }.count { it.id == 1558 },
             )
             assertAreaDamage(deps, targets, NylocasStyle.Melee, warnings = true)
+        }
+
+    @ParameterizedTest
+    @CsvSource(
+        "WestNorth, Small",
+        "WestNorth, Big",
+        "EastNorth, Small",
+        "EastNorth, Big",
+        "SouthWest, Small",
+        "SouthWest, Big",
+    )
+    fun `bulwark ignores lane nylos until they reach the room`(
+        slot: NylocasSlot,
+        size: NylocasSize,
+        state: GameTestState,
+    ) =
+        state.runDamageTest { deps, room ->
+            val lane =
+                when (slot) {
+                    NylocasSlot.WestNorth -> CoordGrid(3289, 4249)
+                    NylocasSlot.EastNorth -> CoordGrid(3302, 4249)
+                    else -> CoordGrid(3295, 4242)
+                }
+            val inside =
+                when (slot) {
+                    NylocasSlot.WestNorth -> lane.translateX(1)
+                    NylocasSlot.EastNorth -> lane.translateX(-1)
+                    else -> lane.translateZ(1)
+                }
+            player.telejump(room.normal[inside])
+            val primary = spawnNylo(deps, room, NylocasStyle.Melee)
+            val candidate = spawnNylo(deps, room, NylocasStyle.Magic, size)
+            advance()
+            primary.aiTimer(0)
+            candidate.aiTimer(0)
+            primary.telejump(deps.collision, room.normal[inside.translateZ(1)])
+            candidate.telejump(deps.collision, room.normal[lane])
+            for (tile in listOf(player.coords, primary.coords, candidate.coords)) {
+                allocZoneCollision(tile)
+                deps.areas.registerAll(
+                    deps.regions.normalizeCoords(tile),
+                    listOf(areas.multiway.id.toShort()).iterator(),
+                )
+            }
+            bash(deps, primary)
+            assertEquals(2, primary.pendingHits().size)
+            assertTrue(primary.pendingHits().all { it.damage > 0 })
+            assertTrue(candidate.pendingHits().isEmpty())
+            assertTrue(candidate.pendingSpotanims.isEmpty())
+            // Directly targeting the lane NPC must also skip all hits and nulling.
+            bash(deps, candidate)
+            assertTrue(candidate.pendingHits().isEmpty())
+            // Excluding a lane target must not null it for a later matching-style attack.
+            assertTrue(roll(deps, candidate, NylocasStyle.Magic) > 0)
+
+            candidate.telejump(deps.collision, room.normal[inside])
+            bash(deps, primary)
+            assertEquals(listOf(0), candidate.pendingHits().map { it.damage })
+            assertEquals(0, roll(deps, candidate, NylocasStyle.Magic))
         }
 
     @ParameterizedTest
@@ -632,6 +692,7 @@ class NylocasDamageTest {
         val npcTypes: NpcTypeList,
         val attacks: PlayerAttackManager,
         val areas: AreaIndex,
+        val collision: CollisionFlagMap,
         val regions: RegionRegistry,
         val chins: BlackChinchompaWeapons,
         val scythe: ScytheOfViturWeapons,

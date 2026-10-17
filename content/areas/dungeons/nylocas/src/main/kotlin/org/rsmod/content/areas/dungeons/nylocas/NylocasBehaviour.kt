@@ -3,10 +3,12 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.combat.commons.PlayerAttackCheck
+import org.rsmod.api.combat.commons.PlayerSpecialAttackCheck
 import org.rsmod.api.combat.commons.player.queueCombatRetaliate
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
 import org.rsmod.api.config.constants
+import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.queues
 import org.rsmod.api.player.clearInteractionRoute
@@ -32,6 +34,7 @@ import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.interact.InteractionNpc
+import org.rsmod.game.inv.isAnyType
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
@@ -76,6 +79,16 @@ constructor(
                         )) {
                         onAiTimer(type) { tick(npc) }
                         onEvent<PlayerAttackCheck>(type.id) { checkAttack(this) }
+                        onEvent<PlayerSpecialAttackCheck>(type.id) {
+                            if (weapon.isAnyType(objs.dinhs_bulwark, objs.dinhs_blazing_bulwark)) {
+                                val source = regions.normalizeCoords(target.coords)
+                                // Use the southwest anchor for both sizes, matching lane entry.
+                                allowed =
+                                    source.level == 0 &&
+                                        source.x in 3290..3301 &&
+                                        source.z in 4243..4254
+                            }
+                        }
                     }
                 }
             }

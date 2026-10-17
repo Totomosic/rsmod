@@ -2,20 +2,24 @@ package org.rsmod.content.other.special.attacks.melee
 
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.PlayerSpecialAttackCheck
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.config.refs.areas
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.hunt.NpcSearch
 import org.rsmod.api.npc.isValidTarget
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.stat
 import org.rsmod.api.player.stat.statSub
+import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.specials.SpecialAttackManager
 import org.rsmod.api.specials.SpecialAttackMap
 import org.rsmod.api.specials.SpecialAttackRepository
 import org.rsmod.api.specials.combat.MeleeSpecialAttack
 import org.rsmod.content.other.special.attacks.configs.special_objs
 import org.rsmod.content.other.special.attacks.configs.special_seqs
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
@@ -23,10 +27,15 @@ import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.type.hunt.HuntVis
 
 /** Shield Bash: a primary hit and a multi-combat sweep, with 25% increased accuracy. */
-class DinhsBulwarkSpecialAttack @Inject constructor(private val search: NpcSearch) :
-    SpecialAttackMap {
+class DinhsBulwarkSpecialAttack
+@Inject
+constructor(
+    private val search: NpcSearch,
+    private val rays: RayCastValidator,
+    private val eventBus: EventBus,
+) : SpecialAttackMap {
     override fun SpecialAttackRepository.register(manager: SpecialAttackManager) {
-        val special = DinhsBulwark(manager, search)
+        val special = DinhsBulwark(manager, search, rays, eventBus)
         registerMelee(special_objs.dinhs_bulwark, special)
         registerMelee(special_objs.dinhs_blazing_bulwark, special)
     }
@@ -34,12 +43,23 @@ class DinhsBulwarkSpecialAttack @Inject constructor(private val search: NpcSearc
     private class DinhsBulwark(
         private val manager: SpecialAttackManager,
         private val search: NpcSearch,
+        private val rays: RayCastValidator,
+        private val eventBus: EventBus,
     ) : MeleeSpecialAttack {
         override suspend fun ProtectedAccess.attack(
             target: Npc,
             attack: CombatAttack.Melee,
         ): Boolean {
             anim(special_seqs.dinhs_bulwark)
+
+            if (
+                coords.level != target.coords.level ||
+                    !rays.hasLineOfSight(coords, target.coords) ||
+                    !canHit(target)
+            ) {
+                manager.continueCombat(this, target)
+                return true
+            }
 
             // Reserve one of the ten sweep slots for the primary target, even in a crowded area.
             val sweep =
@@ -51,7 +71,8 @@ class DinhsBulwarkSpecialAttack @Inject constructor(private val search: NpcSearc
                                 it != target &&
                                     it.isValidTarget() &&
                                     it.visType.hasOp(InteractionOp.Op2) &&
-                                    inArea(areas.multiway, it.coords)
+                                    inArea(areas.multiway, it.coords) &&
+                                    canHit(it)
                             }
                             .take(9)
                             .toList()
@@ -74,6 +95,12 @@ class DinhsBulwarkSpecialAttack @Inject constructor(private val search: NpcSearc
             }
             manager.continueCombat(this, target)
             return true
+        }
+
+        private fun ProtectedAccess.canHit(target: Npc): Boolean {
+            val check = PlayerSpecialAttackCheck(player, target, checkNotNull(player.righthand))
+            eventBus.publish(check)
+            return check.allowed
         }
 
         override suspend fun ProtectedAccess.attack(

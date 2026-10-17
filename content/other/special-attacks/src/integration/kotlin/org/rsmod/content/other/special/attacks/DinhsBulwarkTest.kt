@@ -141,6 +141,38 @@ class DinhsBulwarkTest {
         }
 
     @Test
+    fun GameTestState.`primary cannot be hit without line of sight from the player`() =
+        runBulwarkTest { deps ->
+            val primary = spawnNpc(center.translateZ(1), dummy)
+            markMulti(deps, listOf(center, primary.coords))
+            deps.collision.add(
+                primary.coords.x,
+                primary.coords.z,
+                primary.coords.level,
+                CollisionFlag.WALL_SOUTH_PROJ_BLOCKER,
+            )
+            val before = player.statMap.getXP(stats.attack)
+            useSpecial(deps, primary)
+            assertTrue(primary.pendingHits().isEmpty())
+            assertEquals(100, primary.attackLvl)
+            assertEquals(before, player.statMap.getXP(stats.attack))
+        }
+
+    @Test
+    fun GameTestState.`sweep uses player sight even when the primary can see the NPC`() =
+        runBulwarkTest { deps ->
+            val primary = spawnNpc(center.translateZ(1), dummy)
+            val blocked = spawnNpc(center.translateX(3), dummy)
+            val visible = spawnNpc(center.translateZ(3), dummy)
+            markMulti(deps, listOf(center, primary.coords, blocked.coords, visible.coords))
+            deps.collision.add(center.x + 1, center.z, center.level, CollisionFlag.LOC_PROJ_BLOCKER)
+            queueHits(2, 3, 4)
+            useSpecial(deps, primary)
+            assertTrue(blocked.pendingHits().isEmpty())
+            assertEquals(listOf(4 to 1), visible.pendingHits())
+        }
+
+    @Test
     fun GameTestState.`single combat only hits the primary once`() = runBulwarkTest { deps ->
         val primary = spawnNpc(center.translateZ(1), dummy)
         val nearby = spawnNpc(center.translateX(2), dummy)
