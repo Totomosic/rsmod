@@ -14,7 +14,6 @@ import org.rsmod.game.type.obj.WeaponCategory
 object BlowpipeSeqs : SeqReferences() {
     val attack = find("snakeboss_blowpipe_attack")
     val blazing_attack = find("snakeboss_blowpipe_attack_ornament")
-    val special = find("toxic_blowpipe_special_updated")
 }
 
 object BlowpipeSpots : SpotanimReferences() {

@@ -59,6 +59,7 @@ import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.isType
+import org.rsmod.game.seq.EntitySeq
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.map.CoordGrid
@@ -169,12 +170,15 @@ class ToxicBlowpipeTest {
                     if (distance == 7) RangedAttackStyle.Longrange else RangedAttackStyle.Rapid
                 rollShot(damage = 7)
                 shoot(deps, target, style)
+                val normalAnimation = player.pendingSequence.id
+                player.pendingSequence = EntitySeq.NULL
                 val normal =
                     checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
                         .filterIsInstance<MapProjAnimV2>()
                         .single()
                 rollShot(damage = 7)
                 assertTrue(useSpecial(deps, target, style))
+                assertEquals(normalAnimation, player.pendingSequence.id)
                 val special =
                     checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
                         .filterIsInstance<MapProjAnimV2>()

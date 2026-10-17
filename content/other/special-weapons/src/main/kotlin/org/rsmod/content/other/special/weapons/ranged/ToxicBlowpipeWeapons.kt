@@ -111,13 +111,7 @@ constructor(
 
             manager.setNextAttackDelay(this, if (attack.style == RangedAttackStyle.Rapid) 2 else 3)
             val blazing = obj.isAnyType(objs.blazing_blowpipe, objs.blazing_blowpipe_uncharged)
-            anim(
-                when {
-                    special -> BlowpipeSeqs.special
-                    blazing -> BlowpipeSeqs.blazing_attack
-                    else -> BlowpipeSeqs.attack
-                }
-            )
+            anim(if (blazing) BlowpipeSeqs.blazing_attack else BlowpipeSeqs.attack)
             manager.soundArea(player, synths.dart, radius = 10)
             val projectileType =
                 if (special && player.bounds().distanceTo(target.bounds()) > 1) {
