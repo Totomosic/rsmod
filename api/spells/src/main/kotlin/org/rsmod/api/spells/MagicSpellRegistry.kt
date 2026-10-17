@@ -72,9 +72,15 @@ constructor(private val objTypes: ObjTypeList, private val enumResolver: EnumTyp
         val spellbook = Spellbook[spellbookId]
 
         val spellTypeId = unpacked.param(params.spell_type)
+        // The client categorizes Vengeance as combat magic, but its targeting is handled by
+        // utility scripts rather than the NPC/player spell attack handlers.
         val spellType =
-            MagicSpellType[spellTypeId]
-                ?: error("Invalid MagicSpellType: $spellTypeId (spell=$unpacked)")
+            if (isType(objs.spell_vengeance) || isType(objs.spell_vengeance_other)) {
+                MagicSpellType.Utility
+            } else {
+                MagicSpellType[spellTypeId]
+                    ?: error("Invalid MagicSpellType: $spellTypeId (spell=$unpacked)")
+            }
 
         val name = unpacked.param(params.spell_name)
         val button = unpacked.param(params.spell_button)
