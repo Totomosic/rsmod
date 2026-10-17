@@ -6,7 +6,11 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.styles.AttackStyle
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
@@ -30,6 +34,7 @@ import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.random.GameRandom
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
@@ -47,11 +52,66 @@ import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 class BlackChinchompaTest {
+    @ParameterizedTest
+    @CsvSource("1, 0", "1, 9999", "9, 0", "9, 9999", "10, 0", "10, 9999")
+    fun `each throw plays one explosion at the primary tile when the projectile lands`(
+        distance: Int,
+        accuracyRoll: Int,
+        state: GameTestState,
+    ) {
+        for (playerTarget in listOf(false, true)) {
+            state.runChinchompaTest { deps ->
+                val target =
+                    if (playerTarget) {
+                        registerPlayer(CoordGrid(3200, 3200)).also {
+                            it.setBaseLevel(stats.hitpoints, 99)
+                            it.setCurrentLevel(stats.hitpoints, 99)
+                        }
+                    } else {
+                        spawnPrimary().also { primary ->
+                            val stacked = List(3) { spawnNpc(primary.coords, dummy) }
+                            markMulti(deps, listOf(primary) + stacked)
+                        }
+                    }
+                player.placeAt(target.coords.translateZ(-distance))
+                equip(count = 1)
+                random.next = accuracyRoll
+                repeat(if (playerTarget) 1 else 4) { random.then = 5 }
+
+                shoot(deps, target)
+
+                val projectile =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<MapProjAnimV2>()
+                        .single()
+                val explosion =
+                    listOf(ZoneKey.from(player.coords), ZoneKey.from(target.coords))
+                        .distinct()
+                        .flatMap { deps.zoneUpdates[it]?.toList().orEmpty() }
+                        .filterIsInstance<SoundArea>()
+                        .single()
+                assertEquals(360, explosion.id)
+                assertEquals(projectile.endTime, explosion.delay)
+                assertTrue(explosion.delay > 0)
+                assertEquals(1, explosion.loops)
+                assertEquals(ZoneGrid.from(target.coords).x, explosion.xInZone)
+                assertEquals(ZoneGrid.from(target.coords).z, explosion.zInZone)
+                assertTrue(
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(target.coords)]).any {
+                        it === explosion
+                    }
+                )
+            }
+        }
+    }
+
     @Test
     fun GameTestState.`black chinchompas retain fuse category and use three tick medium fuse`() =
         runChinchompaTest { deps ->
@@ -425,6 +485,7 @@ class BlackChinchompaTest {
         val collision: CollisionFlagMap,
         val validator: RayCastValidator,
         val random: GameRandom,
+        val zoneUpdates: ZoneUpdateMap,
     )
 
     private object TestModule : AbstractModule() {

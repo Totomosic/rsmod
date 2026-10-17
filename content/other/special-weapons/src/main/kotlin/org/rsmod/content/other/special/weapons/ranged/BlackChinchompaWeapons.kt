@@ -20,6 +20,7 @@ import org.rsmod.api.weapons.RangedWeapon
 import org.rsmod.api.weapons.WeaponAttackManager
 import org.rsmod.api.weapons.WeaponMap
 import org.rsmod.api.weapons.WeaponRepository
+import org.rsmod.content.other.special.weapons.configs.BlackChinchompaSynths
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
@@ -82,6 +83,12 @@ constructor(
             )
             val projectile = manager.spawnProjectile(this, primary, travel, projectileType)
             val (serverDelay, clientDelay) = projectile.durations
+            manager.soundArea(
+                primary,
+                BlackChinchompaSynths.explode,
+                delay = clientDelay,
+                radius = 10,
+            )
 
             val accurate =
                 manager.rollRangedAccuracy(
