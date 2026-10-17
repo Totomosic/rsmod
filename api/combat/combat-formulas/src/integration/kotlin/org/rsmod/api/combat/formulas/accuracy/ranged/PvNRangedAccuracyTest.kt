@@ -191,6 +191,7 @@ class PvNRangedAccuracyTest {
     // environment. Avoid excessive matchups to prevent unnecessary overhead.
     private object MatchupProvider : TestArgsProvider {
         override fun args(): List<TestArgs> {
+            // Dragon arrows include seeking accuracy, and anguish uses rupture combat stats.
             return testArgsOfSingleParam(
                 Matchup(expectedAccuracy = 97.20)
                     .withAttackType(RangedAttackType.Standard)
@@ -198,7 +199,7 @@ class PvNRangedAccuracyTest {
                     .withWeapon(objs.shortbow)
                     .withAmmo(objs.bronze_arrow)
                     .withNpcTarget(test_npcs.man),
-                Matchup(expectedAccuracy = 19.87)
+                Matchup(expectedAccuracy = 21.48)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
                     .withHelm(objs.armadyl_helmet)
@@ -212,7 +213,7 @@ class PvNRangedAccuracyTest {
                     .withFeet(objs.pegasian_boots)
                     .withRing(objs.archers_ring_i)
                     .withNpcTarget(test_npcs.corporeal_beast),
-                Matchup(expectedAccuracy = 31.20)
+                Matchup(expectedAccuracy = 33.73)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
                     .withHelm(objs.armadyl_helmet)
@@ -244,7 +245,7 @@ class PvNRangedAccuracyTest {
                     .withPrayers(varbits.hawk_eye)
                     .withRangingPotion()
                     .withNpcTarget(test_npcs.vorkath),
-                Matchup(expectedAccuracy = 55.42)
+                Matchup(expectedAccuracy = 60.88)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
                     .withHelm(objs.void_ranger_helm)

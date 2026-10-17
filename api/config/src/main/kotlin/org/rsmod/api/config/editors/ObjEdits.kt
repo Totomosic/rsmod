@@ -26,6 +26,16 @@ internal object ObjEdits : ObjEditor() {
             param[params.release_note_message] = "You release the chinchompa and it bounds away."
         }
         edit(objs.snowball) { param[params.player_op5_text] = "Pelt" }
+        // Use the necklace of rupture's combat bonuses on the existing anguish item.
+        edit(objs.necklace_of_anguish) {
+            param[params.attack_ranged] = 20
+            param[params.ranged_strength] = 0
+            param[params.additive_ranged_strength] = 8
+            param[params.item_prayer_bonus] = 3
+        }
+        // Dragon arrows use seeking dragon arrow stats; bow-only accuracy is handled by
+        // WornBonuses.
+        edit(objs.dragon_arrow) { param[params.attack_ranged] = 20 }
 
         editSkillCapes()
         editMaxCapes()

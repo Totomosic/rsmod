@@ -244,8 +244,10 @@ constructor(
     private fun tick(npc: Npc) {
         val state = active[npc] ?: return
         if (state.expiring || npc.hitpoints <= 0 || clock.cycle <= state.spawnCycle) return
+        val previousStyle = state.style
         state.style = state.spawn.styleAtAge(clock.cycle - state.spawnCycle)
         updateAppearance(npc, state)
+        if (state.style != previousStyle) cancelPlayerAttacks(npc)
         if (!npc.canProcess) return
         // Retaliation must not pull a nylo off its lane or assigned pillar.
         npc.queueList.removeAll(queues.com_retaliate_player)
@@ -301,7 +303,11 @@ constructor(
             }
         if (npc.visType.id == type.id) return
         npc.transmog(npcTypes[type], Int.MAX_VALUE)
-        // A new form requires a fresh click, including attacks waiting on cooldown.
+    }
+
+    private fun cancelPlayerAttacks(npc: Npc) {
+        // Style flickers require a fresh click, including attacks waiting on cooldown.
+        // Entering the arena only changes the form and must preserve those attacks.
         for (player in players) {
             val interaction = player.interaction as? InteractionNpc ?: continue
             if (interaction.target != npc) continue

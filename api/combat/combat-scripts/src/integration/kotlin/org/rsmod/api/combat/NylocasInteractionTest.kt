@@ -40,6 +40,71 @@ class NylocasInteractionTest {
 
     @ParameterizedTest
     @CsvSource(
+        "Small, Melee",
+        "Small, Ranged",
+        "Small, Magic",
+        "Big, Melee",
+        "Big, Ranged",
+        "Big, Magic",
+    )
+    fun `an attack selected in the lane continues when the nylo enters the room`(
+        size: NylocasSize,
+        style: NylocasStyle,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            object : AbstractModule() {
+                override fun configure() {
+                    bind(AttackStyles::class.java).`in`(Scopes.SINGLETON)
+                    bind(AttackTypes::class.java).`in`(Scopes.SINGLETON)
+                    install(MagicSpellModule())
+                }
+            },
+            NylocasEncounter::class,
+            PvNCombatScript::class,
+            WeaponAttackStylesScript::class,
+            WeaponAttackTypesScript::class,
+        ) { deps ->
+            val owner = player
+            advance(ticks = 25)
+            val attackTargets = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attackTargets += target
+            }
+            val room = createRegion(NylocasRoom.template)
+            val entry = room.normal[NylocasSlot.WestNorth.entry]
+            player.telejump(entry.translateX(if (size == NylocasSize.Small) 1 else 2))
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
+            // Start at the lane's entry tile before AI switches the incoming form to fighting.
+            val npc = Npc(deps.npcTypes[nylocas_npcs.incoming(size, style)], entry)
+            npc.mode = NpcMode.None
+            npc.setHunt(0)
+            deps.behaviour.add(npc, room, NylocasSlot.WestNorth, NylocasSpawn(size, style, null), 1)
+            deps.npcRepo.add(npc, Int.MAX_VALUE)
+            npc.respawns = false
+            val cooldown = player.currentMapClock + 8
+            player.actionDelay = cooldown
+            player.opNpc2(npc)
+            advance()
+            assertEquals(npc, (player.interaction as? InteractionNpc)?.target)
+            assertEquals(nylocas_npcs.incoming(size, style).id, npc.visType.id)
+
+            advance()
+            assertEquals(nylocas_npcs.fighting(size, style).id, npc.visType.id)
+            assertEquals(npc, (player.interaction as? InteractionNpc)?.target)
+            assertEquals(cooldown, player.actionDelay)
+            assertTrue(attackTargets.isEmpty())
+
+            advance(ticks = 8)
+            assertTrue(attackTargets.isNotEmpty())
+            assertTrue(attackTargets.all { it === npc })
+            assertTrue(player.actionDelay > cooldown)
+        }
+
+    @ParameterizedTest
+    @CsvSource(
         "Small, Melee, Ranged, false",
         "Small, Ranged, Magic, false",
         "Small, Magic, Melee, false",

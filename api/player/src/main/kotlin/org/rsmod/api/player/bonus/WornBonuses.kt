@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import kotlin.math.max
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.categories
+import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.hands
@@ -16,6 +17,7 @@ import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.type.obj.isType
 
 public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) {
     public fun strengthBonus(player: Player): Int {
@@ -124,6 +126,7 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
         val weapon = objTypes.getOrNull(player.righthand)
 
         val usingChargebow = weapon != null && weapon.isCategoryType(categories.chargebow)
+        val usingBow = weapon != null && weapon.isCategoryType(categories.bow)
         val usingThrown =
             weapon != null &&
                 (weapon.isCategoryType(categories.throwing_weapon) ||
@@ -142,7 +145,10 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
             offSlash += type.param(params.attack_slash)
             offCrush += type.param(params.attack_crush)
             offMagic += type.param(params.attack_magic)
-            offRange += type.param(params.attack_ranged)
+            // Seeking dragon arrow accuracy only applies while using a bow.
+            val inactiveSeekingArrows =
+                wearpos == Wearpos.Quiver && type.isType(objs.dragon_arrow) && !usingBow
+            if (!inactiveSeekingArrows) offRange += type.param(params.attack_ranged)
             defStab += type.param(params.defence_stab)
             defSlash += type.param(params.defence_slash)
             defCrush += type.param(params.defence_crush)

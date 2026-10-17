@@ -24,6 +24,8 @@ import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.commons.types.RangedAttackType
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
+import org.rsmod.api.config.refs.categories
+import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.spotanims
 import org.rsmod.api.config.refs.stats
@@ -37,6 +39,8 @@ import org.rsmod.api.player.interact.PlayerInteractions
 import org.rsmod.api.player.interact.PlayerTInteractions
 import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.protect.clearPendingAction
+import org.rsmod.api.player.quiver
+import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.statAdvance
 import org.rsmod.api.random.GameRandom
@@ -48,6 +52,7 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.interact.InteractionOp
+import org.rsmod.game.inv.isType
 import org.rsmod.game.proj.ProjAnim
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.ObjTypeList
@@ -62,6 +67,7 @@ public class PlayerAttackManager
 constructor(
     private val random: GameRandom,
     private val eventBus: EventBus,
+    private val bloodFury: BloodFury,
     private val objTypes: ObjTypeList,
     private val worldRepo: WorldRepository,
     private val accuracy: AccuracyFormulae,
@@ -685,6 +691,7 @@ constructor(
         target.queueCombatRetaliate(source)
 
         val hit = target.queueHit(source, delay, HitType.Melee, damage, npcHitModifier)
+        bloodFury.onHit(source, hit.damage)
         target.heroPoints(source, min(hit.damage, target.hitpoints))
         target.combatPlayDefendAnim()
         return hit
@@ -697,6 +704,7 @@ constructor(
         target.queueCombatRetaliate(source)
 
         val hit = target.queueHit(source, delay, HitType.Melee, damage)
+        bloodFury.onHit(source, hit.damage)
         target.heroPoints(source, min(hit.damage, target.hitpoints))
         target.combatPlayDefendAnim(objTypes)
         return hit
@@ -708,7 +716,8 @@ constructor(
      * This function first determines if the attack hits by calling [rollRangedAccuracy]. If the
      * accuracy roll is successful, it then calculates the damage by calling [rollRangedMaxHit].
      *
-     * Successful accuracy rolls deal at least `1` damage before hit processing.
+     * Successful accuracy rolls deal at least `1` damage before hit processing, or `3` when firing
+     * dragon arrows with their seeking effect.
      *
      * @param accuracyMultiplier Multiplier to apply to accuracy (`1.0` = no change, `1.1` = +10%
      *   boost, `0.9` = -10% penalty).
@@ -723,7 +732,7 @@ constructor(
      * @param boltSpecDamage The additive bonus damage from bolt special attacks. For example, Opal
      *   bolts (e) special should set this value to `visible ranged level * 10%, rounded down`.
      * @return `0` if the accuracy roll fails; otherwise, damage rolled from zero through the
-     *   calculated max hit and clamped to at least `1`.
+     *   calculated max hit and clamped to the ammunition's minimum hit.
      */
     public fun rollRangedDamage(
         source: Player,
@@ -830,7 +839,8 @@ constructor(
         )
 
     /**
-     * Rolls ranged damage from zero through the max hit, clamping the result to at least `1`.
+     * Rolls ranged damage from zero through the max hit, clamping the result to at least `1` (or
+     * `3` when firing dragon arrows with their seeking effect).
      *
      * This function first calculates the maximum ranged hit with any applicable boosts by calling
      * [calculateRangedMaxHit], and then rolls a random value within that range.
@@ -843,7 +853,7 @@ constructor(
      *   `0.9` = -10% penalty).
      * @param boltSpecDamage The additive bonus damage from bolt special attacks. For example, Opal
      *   bolts (e) special should set this value to `visible ranged level * 10%, rounded down`.
-     * @return The damage roll, clamped to at least `1`.
+     * @return The damage roll, clamped to the ammunition's minimum hit.
      */
     public fun rollRangedMaxHit(
         source: Player,
@@ -862,7 +872,12 @@ constructor(
                 multiplier = multiplier,
                 boltSpecDamage = boltSpecDamage,
             )
-        return random.rollDamage(maxHit, target)
+        val weapon = objTypes.getOrNull(source.righthand)
+        val seekingArrows =
+            source.quiver.isType(objs.dragon_arrow) &&
+                weapon != null &&
+                weapon.isCategoryType(categories.bow)
+        return random.rollDamage(maxHit, target).coerceAtLeast(if (seekingArrows) 3 else 1)
     }
 
     /**

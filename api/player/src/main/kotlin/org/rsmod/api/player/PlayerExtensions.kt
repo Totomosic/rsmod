@@ -3,6 +3,7 @@ package org.rsmod.api.player
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.areas
+import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.queues
 import org.rsmod.api.config.refs.timers
 import org.rsmod.api.config.refs.varbits
@@ -16,7 +17,9 @@ import org.rsmod.api.player.vars.prayerDrainCounter
 import org.rsmod.api.player.vars.usingQuickPrayers
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
+import org.rsmod.game.inv.isType
 import org.rsmod.game.type.inv.InvScope
+import org.rsmod.game.type.obj.Wearpos
 
 public fun Player.forceDisconnect() {
     forceDisconnect = true
@@ -63,7 +66,10 @@ public fun Player.deathResetTimers() {
 
     // Note: RL regeneration meter plugin does not reset on death. This can lead to de-sync, but
     // it is (currently) the official behavior.
-    softTimer(timers.spec_regen, constants.spec_regen_interval)
+    val interval =
+        if (worn[Wearpos.Ring.slot].isType(objs.lightbearer)) constants.spec_regen_interval / 2
+        else constants.spec_regen_interval
+    softTimer(timers.spec_regen, interval)
 }
 
 public fun Player.isValidTarget(): Boolean {

@@ -19,6 +19,7 @@ dependencies {
     implementation(projects.api.type.typeReferences)
     implementation(projects.api.utils.utilsVars)
     implementation(projects.engine.events)
+    implementation(projects.engine.annotations)
     implementation(projects.engine.game)
     implementation(projects.engine.map)
     implementation(projects.engine.plugin)
