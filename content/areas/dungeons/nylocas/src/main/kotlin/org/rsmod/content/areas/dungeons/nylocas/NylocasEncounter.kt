@@ -77,6 +77,7 @@ constructor(
                     region,
                     waveCycle = clock + waves.waves.first().ticksAfterPrevious,
                     teamSize = raid.teamSize(region),
+                    waveIndex = raid.options(region).startingWave - 1,
                 )
             }
             enterWaitingPlayers(region)
@@ -128,8 +129,9 @@ constructor(
             ) {
                 continue
             }
-            // waveIndex counts waves already spawned: wave 20 must pass the old
-            // cap before raising it. Count bodies through removal, regardless of HP.
+            // waveIndex is the next wave's zero-based index, including skipped waves.
+            // Wave 20 uses the old cap; starting at wave 21 already uses the raised cap.
+            // Count bodies through removal, regardless of HP.
             val cap = if (encounter.waveIndex < 20) 12 else 24
             val population =
                 npcs.count { npc ->

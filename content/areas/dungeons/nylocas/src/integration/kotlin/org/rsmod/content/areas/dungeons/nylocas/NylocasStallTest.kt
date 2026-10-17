@@ -29,6 +29,35 @@ class NylocasStallTest {
     )
 
     @ParameterizedTest
+    @CsvSource("20, 12, false", "21, 12, true", "21, 23, true", "21, 24, false", "31, 23, true")
+    fun `starting late uses the cap appropriate to the selected wave`(
+        startingWave: Int,
+        population: Int,
+        admitted: Boolean,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(*Array(31) { single() }),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val source = placeMapLoc(CoordGrid(3295, 4255, 0), nylocas_locs.barrier)
+            val room = createRegion(NylocasRoom.template)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            advance()
+            deps.raid.start(player, TheatreRaidOptions(startingWave))
+            player.opLoc1(source.copy(coords = room.normal[source.coords]))
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance()
+            repeat(population) { addBlocker(deps, room) }
+            advance(ticks = 4)
+            assertEquals(if (admitted) startingWave else 0, player.vars[tob_varbits.progress_value])
+            assertEquals(population + if (admitted) 1 else 0, deps.npcs.count())
+        }
+
+    @ParameterizedTest
     @CsvSource("11, 2, 17", "12, 1, 12", "13, 1, 13")
     fun `admission checks the population before spawning an entire batch`(
         population: Int,

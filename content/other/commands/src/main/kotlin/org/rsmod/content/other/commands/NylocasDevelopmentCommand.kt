@@ -9,6 +9,7 @@ import org.rsmod.content.areas.dungeons.nylocas.BloatExit
 import org.rsmod.content.areas.dungeons.nylocas.BloatExitRoom
 import org.rsmod.content.areas.dungeons.nylocas.NylocasRoom
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
@@ -62,7 +63,8 @@ constructor(
             "theatrestart",
             "Start your Theatre lobby",
             {
-                val launched = protectedAccess.launch(player) { raid.startLobby(player) }
+                val options = raidOptions(this) ?: return@onCommand
+                val launched = protectedAccess.launch(player) { raid.startLobby(player, options) }
                 if (!launched) player.mes(constants.dm_busy)
             },
         ) {
@@ -72,7 +74,8 @@ constructor(
             "starttob",
             "Start the Theatre of Blood raid and show the party HUD",
             {
-                val launched = protectedAccess.launch(player) { raid.start(player) }
+                val options = raidOptions(this) ?: return@onCommand
+                val launched = protectedAccess.launch(player) { raid.start(player, options) }
                 if (!launched) {
                     player.mes(constants.dm_busy)
                 }
@@ -93,6 +96,15 @@ constructor(
             "Teleport to the Bloat exit before the Nylocas bridge",
             { teleport(this, BloatExitRoom.doorstep, bloatExit::createRoom) },
         )
+    }
+
+    private fun raidOptions(cheat: Cheat): TheatreRaidOptions? {
+        val wave = if (cheat.args.isEmpty()) 1 else cheat.args.singleOrNull()?.toIntOrNull()
+        if (wave == null || wave !in 1..31) {
+            cheat.player.mes("Starting wave must be a whole number between 1 and 31.")
+            return null
+        }
+        return TheatreRaidOptions(startingWave = wave)
     }
 
     private fun teleport(

@@ -22,6 +22,48 @@ class NylocasEncounterTest {
     @Inject
     constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
 
+    @ParameterizedTest
+    @ValueSource(ints = [1, 20, 21, 31])
+    fun `selected starting wave spawns after the entry countdown with its real composition`(
+        startingWave: Int,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = createRoom()
+            val barrier = placeBarrier(room)
+            player.telejump(room.normal[CoordGrid(3295, 4256, 0)])
+            advance()
+            deps.raid.start(player, TheatreRaidOptions(startingWave))
+            // An attempted change after Start raid cannot alter the pending encounter.
+            deps.raid.start(player, TheatreRaidOptions(if (startingWave == 1) 31 else 1))
+            player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advance(ticks = 4)
+            assertEquals(0, deps.npcs.count())
+            advance()
+            assertEquals(startingWave, player.vars[tob_varbits.progress_value])
+            val expected =
+                NylocasWaveTable().waves[startingWave - 1].spawns.map { (slot, spawn) ->
+                    room.normal[spawn.source(slot)] to
+                        nylocas_npcs.incoming(spawn.size, spawn.style).id
+                }
+            assertEquals(expected.toSet(), deps.npcs.map { it.coords to it.id }.toSet())
+            assertEquals(expected.size, deps.npcs.count())
+            val next = NylocasWaveTable().waves.getOrNull(startingWave)
+            if (next != null) {
+                advance(ticks = next.ticksAfterPrevious - 1)
+                assertEquals(startingWave, player.vars[tob_varbits.progress_value])
+                advance()
+                assertEquals(startingWave + 1, player.vars[tob_varbits.progress_value])
+            }
+        }
+
     @Test
     fun GameTestState.`entry waits for confirmation before starting the four tick countdown`() =
         runInjectedGameTest(

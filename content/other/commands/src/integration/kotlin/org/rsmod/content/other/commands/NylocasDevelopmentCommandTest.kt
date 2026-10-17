@@ -8,6 +8,7 @@ import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
 import org.rsmod.content.areas.dungeons.nylocas.tob_interfaces
 import org.rsmod.content.areas.dungeons.nylocas.tob_varbits
 import org.rsmod.game.map.collision.get
@@ -26,7 +27,38 @@ class NylocasDevelopmentCommandTest {
         val regions: RegionRegistry,
         val modLevels: ModLevelTypeList,
         val collision: CollisionFlagMap,
+        val raid: TheatreRaid,
     )
+
+    @Test
+    fun GameTestState.`starting wave is validated and only the host can freeze raid options`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            player.modLevel = deps.modLevels[modlevels.player]
+            player.displayName = "Host"
+            deps.handler.handle(player, ClientCheat("theatrecreate"))
+            advance()
+            val room = checkNotNull(deps.regions[player.coords])
+            val guest = registerPlayer(coords = player.coords)
+            guest.modLevel = deps.modLevels[modlevels.player]
+            for (invalid in listOf("0", "32", "-1", "1.5", "abc", "21 22", "9999999999999")) {
+                deps.handler.handle(player, ClientCheat("theatrestart $invalid"))
+                assertFalse(deps.raid.isStarted(player, room))
+            }
+            deps.handler.handle(guest, ClientCheat("theatrestart 31"))
+            assertFalse(deps.raid.isStarted(player, room))
+            deps.handler.handle(player, ClientCheat("theatrestart 21"))
+            assertTrue(deps.raid.isStarted(player, room))
+            assertTrue(deps.raid.isStarted(guest, room))
+            assertEquals(TheatreRaidOptions(21), deps.raid.options(room))
+            deps.handler.handle(player, ClientCheat("theatrestart 1"))
+            deps.handler.handle(guest, ClientCheat("theatrestart 31"))
+            assertEquals(TheatreRaidOptions(21), deps.raid.options(room))
+        }
 
     @Test
     fun GameTestState.`every account role can create a lobby and teleport to the door`() =
@@ -68,6 +100,7 @@ class NylocasDevelopmentCommandTest {
             deps.handler.handle(guest, ClientCheat("theatrestart"))
             assertEquals(0, guest.vars[tob_varbits.party_status])
             deps.handler.handle(player, ClientCheat("theatrestart"))
+            assertEquals(TheatreRaidOptions(), deps.raid.options(room))
             assertEquals(2, player.vars[tob_varbits.party_status])
             assertEquals(2, guest.vars[tob_varbits.party_status])
             assertEquals(2, guest.vars[tob_varbits.party_slot])

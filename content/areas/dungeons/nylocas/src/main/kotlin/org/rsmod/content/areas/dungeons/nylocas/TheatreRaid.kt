@@ -66,14 +66,14 @@ constructor(
         return lobby.region.normal[BloatExitRoom.doorstep]
     }
 
-    fun startLobby(player: Player) {
+    fun startLobby(player: Player, options: TheatreRaidOptions = TheatreRaidOptions()) {
         process()
         val lobby = regions[player.coords]?.let { lobbies[it.uid] }
         if (lobby == null || lobby.host !== player) {
             player.mes("Only the lobby host can start the raid. Create a lobby to host your own.")
             return
         }
-        start(player)
+        start(player, options)
     }
 
     override fun ScriptContext.startup() {
@@ -82,7 +82,7 @@ constructor(
         onPlayerLogout { leave(player) }
     }
 
-    fun start(player: Player) {
+    fun start(player: Player, options: TheatreRaidOptions = TheatreRaidOptions()) {
         // Clear an old room's state before starting again after a development teleport.
         process()
         val region = regions[player.coords]
@@ -106,10 +106,14 @@ constructor(
             player.mes("The Theatre of Blood supports up to five players per raid.")
             return
         }
-        val raid = Raid(region, members)
+        val raid = Raid(region, members, options)
         raids[region.uid] = raid
         sync(raid)
-        player.mes("Raid started. Pass the Nylocas barrier to begin the first wave.")
+        for (member in members) {
+            member.mes(
+                "Raid started. Pass the Nylocas barrier to begin at wave ${options.startingWave}."
+            )
+        }
     }
 
     fun isStarted(player: Player, region: Region): Boolean =
@@ -117,6 +121,9 @@ constructor(
 
     fun teamSize(region: Region): Int =
         checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.teamSize
+
+    fun options(region: Region): TheatreRaidOptions =
+        checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.options
 
     fun beginRoom(region: Region) {
         val raid = raids[region.uid] ?: return
@@ -228,6 +235,7 @@ constructor(
     private class Raid(
         val region: Region,
         val members: MutableList<Player>,
+        val options: TheatreRaidOptions,
         var names: List<String>? = null,
         var progressType: Int = 0,
         var progressValue: Int = 0,
