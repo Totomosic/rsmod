@@ -31,14 +31,14 @@ class BloatExitTest {
     )
 
     @Test
-    fun GameTestState.`either exit half enters the start of the bridge in the same instance`() =
+    fun GameTestState.`either exit half arrives beside the combat dummy in the same instance`() =
         runInjectedGameTest(Dependencies::class, null, BloatExit::class, TheatreRaid::class) { deps
             ->
             val blocked =
                 CollisionFlag.BLOCK_WALK or CollisionFlag.LOC or CollisionFlag.GROUND_DECOR
             // Check the loaded cache collision as well as the copied instance terrain.
             assertEquals(0, deps.collision[BloatExitRoom.doorstep] and blocked)
-            assertEquals(0, deps.collision[NylocasRoom.bridgeStart] and blocked)
+            assertEquals(0, deps.collision[CoordGrid(3295, 4258, 0)] and blocked)
             val room = checkNotNull(deps.exit.createRoom())
             val west = passage(room, deps, 4447)
             val east = passage(room, deps, 4448)
@@ -55,7 +55,7 @@ class BloatExitTest {
             advance()
 
             for (member in listOf(player, other)) {
-                assertEquals(CoordGrid(3302, 4275, 0), deps.regions.normalizeCoords(member.coords))
+                assertEquals(CoordGrid(3295, 4258, 0), deps.regions.normalizeCoords(member.coords))
                 assertEquals(room.uid, deps.regions[member.coords]?.uid)
                 assertEquals(0, deps.collision[member.coords] and blocked)
             }
@@ -86,7 +86,7 @@ class BloatExitTest {
             player.opLoc1(passage(room, deps, 4447))
             advance(ticks = 8)
             assertEquals(0, deps.npcs.count())
-            assertEquals(CoordGrid(3302, 4275, 0), deps.regions.normalizeCoords(player.coords))
+            assertEquals(CoordGrid(3295, 4258, 0), deps.regions.normalizeCoords(player.coords))
 
             player.opLoc1(source.copy(coords = room.normal[source.coords]))
             advanceUntil(

@@ -55,7 +55,7 @@ constructor(
             mes("The host must click Start raid before you can pass through this door.")
             return
         }
-        telejump(region.normal[NylocasRoom.bridgeStart])
+        telejump(region.normal[NylocasRoom.combatDummy.translateX(-1)])
     }
 }
 
