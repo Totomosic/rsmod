@@ -124,7 +124,10 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
         val weapon = objTypes.getOrNull(player.righthand)
 
         val usingChargebow = weapon != null && weapon.isCategoryType(categories.chargebow)
-        val usingThrown = weapon != null && weapon.isCategoryType(categories.throwing_weapon)
+        val usingThrown =
+            weapon != null &&
+                (weapon.isCategoryType(categories.throwing_weapon) ||
+                    weapon.isCategoryType(categories.chinchompa))
         val ignoreQuiverBonuses = usingChargebow || usingThrown
 
         for (wearpos in Wearpos.entries) {
