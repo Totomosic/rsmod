@@ -4,7 +4,10 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.styles.AttackStyle
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
@@ -20,6 +23,7 @@ import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.synths
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.inv.HeldOpScript
@@ -30,6 +34,7 @@ import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.worn.Blowpipe
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
@@ -47,9 +52,60 @@ import org.rsmod.game.inv.isType
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 
 class ToxicBlowpipeTest {
+    @ParameterizedTest
+    @CsvSource("1, 0", "1, 9999", "5, 0", "5, 9999")
+    fun `each shot plays one sound immediately at the player tile`(
+        distance: Int,
+        accuracyRoll: Int,
+        state: GameTestState,
+    ) {
+        for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
+            for (playerTarget in listOf(false, true)) {
+                state.runBlowpipeTest { deps ->
+                    val target =
+                        if (playerTarget) {
+                            registerPlayer(CoordGrid(3200, 3200)).also {
+                                it.setBaseLevel(stats.hitpoints, 99)
+                                it.setCurrentLevel(stats.hitpoints, 99)
+                            }
+                        } else {
+                            spawnDummy()
+                        }
+                    player.placeAt(target.coords.translateZ(-distance))
+                    equip(pipe = pipe)
+                    random.next = accuracyRoll
+                    if (accuracyRoll == 0) random.then = 5 // Damage on a hit.
+                    random.then = 4 // No ground drop.
+                    random.then = 1 // Consume a scale.
+
+                    shoot(deps, target)
+
+                    val sound =
+                        listOf(ZoneKey.from(player.coords), ZoneKey.from(target.coords))
+                            .distinct()
+                            .flatMap { deps.zoneUpdates[it]?.toList().orEmpty() }
+                            .filterIsInstance<SoundArea>()
+                            .single()
+                    assertEquals(0, sound.delay)
+                    assertEquals(synths.dart.id, sound.id)
+                    assertEquals(1, sound.loops)
+                    assertEquals(ZoneGrid.from(player.coords).x, sound.xInZone)
+                    assertEquals(ZoneGrid.from(player.coords).z, sound.zInZone)
+                    assertTrue(
+                        checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)]).any {
+                            it === sound
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     @Test
     fun GameTestState.`both cosmetics use light ranged attacks at OSRS speed and range`() =
         runBlowpipeTest { deps ->
@@ -463,6 +519,7 @@ class ToxicBlowpipeTest {
         val speeds: WeaponSpeeds,
         val types: AttackTypes,
         val attacks: PlayerAttackManager,
+        val zoneUpdates: ZoneUpdateMap,
     )
 
     private object TestModule : AbstractModule() {

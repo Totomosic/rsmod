@@ -81,6 +81,7 @@ constructor(
             manager.setNextAttackDelay(this, if (attack.style == RangedAttackStyle.Rapid) 2 else 3)
             val blazing = obj.isAnyType(objs.blazing_blowpipe, objs.blazing_blowpipe_uncharged)
             anim(if (blazing) BlowpipeSeqs.blazing_attack else BlowpipeSeqs.attack)
+            manager.soundArea(player, synths.dart, radius = 10)
             val projectile = manager.spawnProjectile(this, target, travel, projanims.thrown)
             val (serverDelay, clientDelay) = projectile.durations
 
@@ -88,7 +89,6 @@ constructor(
             val damage = manager.rollRangedDamage(this, target, attack)
             manager.giveCombatXp(this, target, attack, damage)
             manager.queueRangedHit(this, target, dartType, damage, clientDelay, serverDelay)
-            manager.soundArea(target, synths.dart, delay = clientDelay, radius = 10)
 
             val useDart = ammunition.useStoredAmmo(player, dartType, target.coords, serverDelay)
             val useScale = damageRandom.of(3) != 0
