@@ -78,7 +78,15 @@ constructor(private val objTypes: ObjTypeList, private val enumResolver: EnumTyp
 
         val name = unpacked.param(params.spell_name)
         val button = unpacked.param(params.spell_button)
-        val maxHit = unpacked.param(params.spell_maxhit)
+        // These ancient spells have placeholder max-hit values in the client cache. Store their
+        // actual base damage here; combat formulas apply prayer and equipment bonuses later.
+        val maxHit =
+            when {
+                isType(objs.spell_ice_blitz) -> 26
+                isType(objs.spell_ice_barrage) -> 30
+                isType(objs.spell_blood_barrage) -> 29
+                else -> unpacked.param(params.spell_maxhit)
+            }
         val levelReq = unpacked.param(params.spell_levelreq)
         val experience = unpacked.paramOrNull(params.spell_castxp)
 

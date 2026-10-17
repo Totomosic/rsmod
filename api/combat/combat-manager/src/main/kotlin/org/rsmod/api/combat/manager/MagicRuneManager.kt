@@ -206,21 +206,35 @@ constructor(
     private fun validateReqs(
         player: Player,
         reqs: List<MagicSpell.ObjRequirement>,
-    ): List<MagicRunes.Validation> =
-        MagicRunes.validateRequirements(
-            inv = player.inv,
-            worn = player.worn,
-            pouch = player.currentRunePouch(),
-            requirements = MagicRunes.RequirementList.from(reqs),
-            useFakeRunes = player.useFakeRunes(),
-            runeFountain = player.nearFountainOfRune(),
-            compact = compact,
-            unlimited = unlimited,
-            combos = combos,
-            fakes = fakes,
-            runeSubs = runeSubs,
-            staffSubs = staffSubs,
-        )
+    ): List<MagicRunes.Validation> {
+        val unlimitedRunes = MagicRunes.hasUnlimitedRunes(player.inv)
+        val requirements =
+            if (unlimitedRunes) {
+                reqs.filter { it.wornSlot != null || compact[it.obj] == null }
+            } else {
+                reqs
+            }
+        val validations =
+            MagicRunes.validateRequirements(
+                inv = player.inv,
+                worn = player.worn,
+                pouch = player.currentRunePouch(),
+                requirements = MagicRunes.RequirementList.from(requirements),
+                useFakeRunes = player.useFakeRunes(),
+                runeFountain = player.nearFountainOfRune(),
+                compact = compact,
+                unlimited = unlimited,
+                combos = combos,
+                fakes = fakes,
+                runeSubs = runeSubs,
+                staffSubs = staffSubs,
+            )
+        return if (unlimitedRunes) {
+            listOf(MagicRunes.Validation.Valid.Unlimited) + validations
+        } else {
+            validations
+        }
+    }
 
     /**
      * Verifies that the player meets the magic level requirement to cast [spell], and that the

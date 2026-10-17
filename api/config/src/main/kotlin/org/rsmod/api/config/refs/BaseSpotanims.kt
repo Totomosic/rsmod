@@ -7,6 +7,11 @@ import org.rsmod.api.type.refs.spot.SpotanimReferences
 typealias spotanims = BaseSpotanims
 
 object BaseSpotanims : SpotanimReferences() {
+    val ice_blitz_travel = find("ice_blitz_travel")
+    val ice_blitz_impact = find("ice_blitz_impact")
+    val ice_barrage_travel = find("ice_barrage_travel")
+    val ice_barrage_impact = find("ice_barrage_impact")
+    val spell_blood_barrage_impact = find("spell_blood_barrage_impact")
     val osb8_skillcape_banana_spotanim = find("osb8_skillcape_banana_spotanim", 53731913)
     val smokepuff = find("smokepuff", 11485776)
     val sp_attackglow_red = find("sp_attackglow_red", 8689879)

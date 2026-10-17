@@ -21,6 +21,14 @@ import org.rsmod.game.type.obj.isType
 import org.rsmod.game.type.varbit.VarBitType
 
 public object MagicRunes {
+    /** LocalScape rune pouches supply every rune without storing or consuming rune stacks. */
+    public fun hasUnlimitedRunes(inv: Inventory): Boolean =
+        objs.rune_pouch in inv ||
+            objs.rune_pouch_l in inv ||
+            objs.divine_rune_pouch in inv ||
+            objs.divine_rune_pouch_l in inv ||
+            objs.lms_rune_pouch in inv
+
     /*
      * Warning: This function is complex, but necessarily so. It replicates subtle behavior from
      * the official game regarding how requirements are validated and consumed - especially combo
@@ -360,6 +368,10 @@ public object MagicRunes {
         allowBlighted: Boolean,
     ): Validation.Valid? {
         val inv = player.inv
+        // Prefer the pouch's unlimited runes over consuming a blighted spell sack.
+        if (hasUnlimitedRunes(inv)) {
+            return null
+        }
         when {
             spell.isAnyType(objs.spell_blood_blitz, objs.spell_blood_barrage) -> {
                 if (useFakeRunes && objs.lms_rune_pouch in inv) {

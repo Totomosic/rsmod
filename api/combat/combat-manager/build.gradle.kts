@@ -8,10 +8,12 @@ kotlin {
 
 dependencies {
     implementation(libs.guice)
+    implementation(projects.api.areaChecker)
     implementation(projects.api.combat.combatCommons)
     implementation(projects.api.combat.combatFormulas)
     implementation(projects.api.config)
     implementation(projects.api.invtx)
+    implementation(projects.api.hunt)
     implementation(projects.api.npc)
     implementation(projects.api.objCharges)
     implementation(projects.api.player)

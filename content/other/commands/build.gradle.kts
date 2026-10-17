@@ -17,5 +17,9 @@ dependencies {
     implementation(projects.content.areas.dungeons.nylocas)
     integrationImplementation(projects.api.net)
     integrationImplementation(projects.api.registry)
+    integrationImplementation(projects.api.spells)
+    integrationImplementation(projects.api.spellsRunes)
+    integrationImplementation(projects.api.combat.combatCommons)
+    integrationImplementation(projects.api.combat.combatManager)
     integrationImplementation(projects.content.areas.dungeons.nylocas)
 }
