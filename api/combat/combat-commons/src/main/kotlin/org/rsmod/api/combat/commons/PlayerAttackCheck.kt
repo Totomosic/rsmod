@@ -10,7 +10,9 @@ public class PlayerAttackCheck(
     public val source: Player,
     public val target: Npc,
     public val style: HitType,
+    public val isThrall: Boolean = false,
 ) : KeyedEvent {
     override val id: Long = target.visType.id.toLong()
+    /** Whether the attack may deal damage; thralls still queue a zero hit when this is false. */
     public var allowed: Boolean = true
 }

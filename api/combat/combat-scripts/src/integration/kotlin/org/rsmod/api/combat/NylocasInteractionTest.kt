@@ -5,6 +5,7 @@ import com.google.inject.Scopes
 import jakarta.inject.Inject
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.scripts.PvNCombatScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
@@ -73,6 +74,11 @@ class NylocasInteractionTest {
             WeaponAttackStylesScript::class,
             WeaponAttackTypesScript::class,
         ) { deps ->
+            val owner = player
+            val attackTargets = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attackTargets += target
+            }
             val room = createRegion(NylocasRoom.template)
             player.telejump(room.normal[NylocasRoom.bridge])
             player.setBaseLevel(stats.hitpoints, 99)
@@ -134,5 +140,6 @@ class NylocasInteractionTest {
             player.opNpc2(npc)
             advance(ticks = 2)
             assertTrue(player.actionDelay > cooldown)
+            assertEquals(listOf(npc), attackTargets)
         }
 }

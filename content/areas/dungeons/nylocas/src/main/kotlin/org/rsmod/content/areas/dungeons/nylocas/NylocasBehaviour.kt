@@ -90,6 +90,10 @@ constructor(
                 NylocasStyle.Ranged -> HitType.Ranged
                 NylocasStyle.Magic -> HitType.Magic
             }
+        if (check.isThrall) {
+            check.allowed = check.style == requiredStyle
+            return
+        }
         // Remember the account on this individual NPC, including through flickers and re-entry.
         // Check before accuracy so even a wrong-style miss permanently nulls the player's target.
         if (check.style != requiredStyle) {

@@ -42,6 +42,7 @@ dependencies {
     integrationImplementation(projects.content.other.specialWeapons)
     integrationImplementation(projects.content.other.specialAttacks)
     integrationImplementation(projects.content.skills.magic.spellAttacks)
+    integrationImplementation(projects.content.skills.magic.utilitySpells)
     integrationImplementation(projects.api.spellsRunes)
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(libs.fastutil)

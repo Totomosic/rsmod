@@ -12,6 +12,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.CombatStance
+import org.rsmod.api.combat.commons.PlayerAttackCheck
+import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
@@ -22,11 +24,14 @@ import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.areas
+import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.freeze.isFrozen
 import org.rsmod.api.hit.plugin.NpcHitScript
+import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.player.clearInteractionRoute
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
@@ -63,6 +68,7 @@ import org.rsmod.api.weapons.WeaponRegistry
 import org.rsmod.api.weapons.WeaponRepository
 import org.rsmod.api.weapons.attack
 import org.rsmod.content.areas.dungeons.nylocas.NylocasBehaviour
+import org.rsmod.content.areas.dungeons.nylocas.NylocasDeaths
 import org.rsmod.content.areas.dungeons.nylocas.NylocasEncounter
 import org.rsmod.content.areas.dungeons.nylocas.NylocasPillar
 import org.rsmod.content.areas.dungeons.nylocas.NylocasRoom
@@ -76,12 +82,15 @@ import org.rsmod.content.other.special.attacks.melee.DinhsBulwarkSpecialAttack
 import org.rsmod.content.other.special.weapons.melee.ScytheOfViturWeapons
 import org.rsmod.content.other.special.weapons.ranged.BlackChinchompaWeapons
 import org.rsmod.content.skills.magic.spell.attacks.ancient.AncientSpells
+import org.rsmod.content.skills.magic.utility.Thralls
+import org.rsmod.content.skills.magic.utility.thrall_components
 import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.Hit
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.region.Region
 import org.rsmod.game.spot.EntitySpotanim
@@ -91,6 +100,108 @@ import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 
 class NylocasDamageTest {
+    @Test
+    fun GameTestState
+        .`every thrall style attempts every nylo style and wrong styles land zero without nulling`() =
+        runDamageTest(Thralls::class) { deps, room ->
+            prepareThralls()
+            val hits = mutableMapOf<Npc, MutableList<Hit>>()
+            for (style in NylocasStyle.entries) {
+                val type = nylocas_npcs.incoming(NylocasSize.Small, style)
+                eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, type.id.toLong()) {
+                    hits.getOrPut(npc, ::mutableListOf).add(hit)
+                }
+            }
+            for ((button, thrallStyle) in
+                listOf(
+                    thrall_components.ghost to NylocasStyle.Magic,
+                    thrall_components.skeleton to NylocasStyle.Ranged,
+                    thrall_components.zombie to NylocasStyle.Melee,
+                )) {
+                val targets =
+                    NylocasStyle.entries.associateWith { style ->
+                        spawnNylo(deps, room, style).apply {
+                            aiTimer(0)
+                            baseHitpointsLvl = 1000
+                            hitpoints = 1000
+                        }
+                    }
+                player.telejump(targets.values.first().coords.translateZ(-1))
+                player.ifButton(button)
+                advance()
+                for ((style, target) in targets) {
+                    eventBus.publish(PlayerAttackTarget(player, target))
+                    if (style == thrallStyle) random.next = 3
+                    advance(ticks = 6)
+                    val impacts = hits.getValue(target)
+                    assertTrue(impacts.isNotEmpty())
+                    if (style == thrallStyle) assertTrue(impacts.any { it.damage > 0 })
+                    else {
+                        assertTrue(impacts.all { it.damage == 0 })
+                        assertEquals(1000, target.hitpoints)
+                        assertTrue(roll(deps, target, style) > 0)
+                    }
+                }
+                for (target in targets.values) deps.npcRepo.del(target, Int.MAX_VALUE)
+            }
+        }
+
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `a wrong style thrall zero hit can speed up a nylo death`(
+        thrall: Boolean,
+        state: GameTestState,
+    ) =
+        state.runDamageTest(Thralls::class, NylocasDeaths::class) { deps, room ->
+            prepareThralls()
+            val target = spawnNylo(deps, room, NylocasStyle.Magic).apply { aiTimer(0) }
+            player.telejump(target.coords.translateZ(-1))
+            val impacts = mutableListOf<Int>()
+            eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, target.id.toLong()) {
+                impacts += hit.damage
+            }
+            val hp = target.hitpoints
+            eventBus.publish(PlayerAttackTarget(player, target))
+            if (thrall) player.ifButton(thrall_components.zombie)
+            advance(ticks = 3)
+            // Both hits land together, with the lethal player hit queued before the thrall zero.
+            target.queueHit(player, delay = 2, HitType.Magic, damage = hp)
+            advance()
+            if (thrall)
+                assertTrue(target.pendingHits().any { it.type == HitType.Melee && it.damage == 0 })
+            advance()
+            assertEquals(0, target.hitpoints)
+            assertEquals(if (thrall) listOf(hp, 0) else listOf(hp), impacts)
+            assertEquals(thrall, target.isDelayed)
+        }
+
+    private fun GameTestScope.prepareThralls() {
+        player.setCurrentLevel(stats.prayer, 99)
+        player.inv[1] = InvObj(findObjType { it.id == 25818 }.single())
+        VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+        player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+    }
+
+    @Test
+    fun GameTestState.`thralls respect current style without nulling their owner`() =
+        runDamageTest { deps, room ->
+            for (style in NylocasStyle.entries) {
+                val npc = spawnNylo(deps, room, style)
+                val required =
+                    when (style) {
+                        NylocasStyle.Melee -> HitType.Melee
+                        NylocasStyle.Ranged -> HitType.Ranged
+                        NylocasStyle.Magic -> HitType.Magic
+                    }
+                for (attack in listOf(HitType.Melee, HitType.Ranged, HitType.Magic)) {
+                    val check = PlayerAttackCheck(player, npc, attack, isThrall = true)
+                    eventBus.publish(check)
+                    assertEquals(attack == required, check.allowed)
+                }
+                assertTrue(roll(deps, npc, style) > 0)
+            }
+        }
+
     @ParameterizedTest
     @CsvSource("Small, false", "Small, true", "Big, false", "Big, true")
     fun `every form accepts only matching attacks and wrong styles permanently null the attacker`(
@@ -478,7 +589,8 @@ class NylocasDamageTest {
     }
 
     private fun GameTestState.runDamageTest(
-        testBody: GameTestScope.(Dependencies, Region) -> Unit
+        vararg extraScripts: KClass<out PluginScript>,
+        testBody: GameTestScope.(Dependencies, Region) -> Unit,
     ) =
         runInjectedGameTest(
             Dependencies::class,
@@ -493,6 +605,7 @@ class NylocasDamageTest {
             RuneSubstituteScript::class,
             UnlimitedRuneScript::class,
             WeaponAttackStylesScript::class,
+            *extraScripts,
         ) { deps ->
             with(deps.chins) { deps.weaponRepo.register(deps.weaponManager) }
             with(deps.scythe) { deps.weaponRepo.register(deps.weaponManager) }
