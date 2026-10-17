@@ -2,14 +2,17 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.rsmod.api.combat.commons.PlayerAttackCheck
 import org.rsmod.api.combat.commons.player.queueCombatRetaliate
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
+import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.queues
 import org.rsmod.api.player.clearInteractionRoute
 import org.rsmod.api.player.hit.queueHit
 import org.rsmod.api.player.isValidTarget
+import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.npc.NpcRepository
@@ -19,6 +22,7 @@ import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.route.RouteFactory
 import org.rsmod.api.route.StepFactory
 import org.rsmod.api.script.onAiTimer
+import org.rsmod.api.script.onEvent
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcAvatar
@@ -65,11 +69,43 @@ constructor(
         with(context) {
             for (size in NylocasSize.entries) {
                 for (style in NylocasStyle.entries) {
-                    onAiTimer(nylocas_npcs.incoming(size, style)) { tick(npc) }
-                    onAiTimer(nylocas_npcs.fighting(size, style)) { tick(npc) }
+                    for (type in
+                        listOf(
+                            nylocas_npcs.incoming(size, style),
+                            nylocas_npcs.fighting(size, style),
+                        )) {
+                        onAiTimer(type) { tick(npc) }
+                        onEvent<PlayerAttackCheck>(type.id) { checkAttack(this) }
+                    }
                 }
             }
         }
+
+    private fun checkAttack(check: PlayerAttackCheck) {
+        val state = active[check.target] ?: return
+        val playerId = checkNotNull(check.source.uuid)
+        val requiredStyle =
+            when (state.style) {
+                NylocasStyle.Melee -> HitType.Melee
+                NylocasStyle.Ranged -> HitType.Ranged
+                NylocasStyle.Magic -> HitType.Magic
+            }
+        // Remember the account on this individual NPC, including through flickers and re-entry.
+        // Check before accuracy so even a wrong-style miss permanently nulls the player's target.
+        if (check.style != requiredStyle) {
+            // Suppress every splat of the attack that first nulls this player/NPC pair.
+            state.nullFeedbackCycles.putIfAbsent(playerId, clock.cycle)
+        }
+        val lastFeedback = state.nullFeedbackCycles[playerId]
+        check.allowed = lastFeedback == null
+        if (lastFeedback != null && lastFeedback != clock.cycle) {
+            // Multi-hit weapons produce one cue per attacker/target this tick. Keep the shield
+            // separate from spell impacts and splashes, which use the default spotanim slot.
+            state.nullFeedbackCycles[playerId] = clock.cycle
+            check.source.soundSynth(NylocasSynths.cancelled)
+            check.target.spotanim(nylocas_spots.shielded, slot = constants.spotanim_slot_combat)
+        }
+    }
 
     fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn, teamSize: Int) {
         npc.collisionSize = 1
@@ -443,6 +479,8 @@ constructor(
         var nextAttack: Int = 0,
         var waitingReturn: CoordGrid? = null,
         var expiring: Boolean = false,
+        // Presence records permanent nulling; the value is the last suppressed/played cue tick.
+        val nullFeedbackCycles: MutableMap<Long, Int> = mutableMapOf(),
     )
 
     private object PillarCollision : CollisionStrategy {

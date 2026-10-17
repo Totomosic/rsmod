@@ -39,6 +39,8 @@ dependencies {
     integrationImplementation(projects.api.pluginCommons)
     integrationImplementation(projects.api.registry)
     integrationImplementation(projects.content.areas.dungeons.nylocas)
+    integrationImplementation(projects.content.other.specialWeapons)
+    integrationImplementation(projects.content.other.specialAttacks)
     integrationImplementation(projects.content.skills.magic.spellAttacks)
     integrationImplementation(projects.api.spellsRunes)
     integrationImplementation(projects.api.hitPlugin)

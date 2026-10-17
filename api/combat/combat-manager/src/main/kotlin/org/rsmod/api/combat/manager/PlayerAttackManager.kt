@@ -3,6 +3,7 @@ package org.rsmod.api.combat.manager
 import jakarta.inject.Inject
 import kotlin.math.min
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.PlayerAttackCheck
 import org.rsmod.api.combat.commons.fx.MeleeAnimationAndSound
 import org.rsmod.api.combat.commons.isCombatDummy
 import org.rsmod.api.combat.commons.magic.MagicSpell
@@ -528,6 +529,7 @@ constructor(
         blockType: MeleeAttackType?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Melee)) return false
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
@@ -770,6 +772,8 @@ constructor(
      *   same as [attackType], but certain scenarios override this with a fixed value.
      * @param multiplier Multiplier to apply to accuracy (`1.0` = no change, `1.1` = +10% boost,
      *   `0.9` = -10% penalty).
+     * @param checkDamageRestrictions Shared-accuracy area attacks may disable this and call
+     *   [canDamage] for each victim separately, including when this accuracy roll misses.
      * @return `true` if the accuracy roll succeeds (the hit will "land"), `false` otherwise.
      */
     public fun rollRangedAccuracy(
@@ -779,7 +783,9 @@ constructor(
         attackStyle: RangedAttackStyle?,
         blockType: RangedAttackType?,
         multiplier: Double,
+        checkDamageRestrictions: Boolean = true,
     ): Boolean {
+        if (checkDamageRestrictions && !canDamage(source, target, HitType.Ranged)) return false
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
@@ -1122,11 +1128,12 @@ constructor(
         spellbook: Spellbook?,
         sunfireRune: Boolean,
     ): Boolean =
-        target.isCombatDummy() ||
-            when (target) {
-                is Npc -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
-                is Player -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
-            }
+        canDamage(source, target, HitType.Magic) &&
+            (target.isCombatDummy() ||
+                when (target) {
+                    is Npc -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
+                    is Player -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
+                })
 
     private fun rollSpellAccuracy(
         source: Player,
@@ -1307,6 +1314,7 @@ constructor(
         attackStyle: MagicAttackStyle?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Magic)) return false
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> rollStaffAccuracy(source, target, attackStyle, multiplier)
@@ -1780,6 +1788,7 @@ constructor(
         attackStyle: MeleeAttackStyle?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Melee)) return false
         return when (target) {
             is Npc -> {
                 rollMagicalMeleeAccuracy(source, target, attackType, attackStyle, multiplier)
@@ -1843,6 +1852,7 @@ constructor(
         blockType: RangedAttackType?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Melee)) return false
         return when (target) {
             is Npc -> {
                 rollRangedMeleeAccuracy(
@@ -1919,6 +1929,7 @@ constructor(
         blockType: RangedAttackType?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Magic)) return false
         return when (target) {
             is Npc -> rollRangedMagicAccuracy(source, target, attackStyle, blockType, multiplier)
             is Player -> rollRangedMagicAccuracy(source, target, attackStyle, multiplier)
@@ -1974,6 +1985,7 @@ constructor(
         attackStyle: RangedAttackStyle?,
         multiplier: Double,
     ): Boolean {
+        if (!canDamage(source, target, HitType.Ranged)) return false
         return when (target) {
             is Npc -> {
                 rollMagicalRangedAccuracy(source, target, attackType, attackStyle, multiplier)
@@ -2015,6 +2027,17 @@ constructor(
             specMultiplier = specMultiplier,
             random = random,
         )
+
+    /**
+     * Checks a target's style restrictions and records the attempted attack when required.
+     * Shared-accuracy area attacks must call this for every target, even when accuracy fails.
+     */
+    public fun canDamage(source: Player, target: PathingEntity, style: HitType): Boolean {
+        if (target !is Npc) return true
+        val check = PlayerAttackCheck(source, target, style)
+        eventBus.publish(check)
+        return check.allowed
+    }
 
     public fun spawnProjectile(
         source: Player,

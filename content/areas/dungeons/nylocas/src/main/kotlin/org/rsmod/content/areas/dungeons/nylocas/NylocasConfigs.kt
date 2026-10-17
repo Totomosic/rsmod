@@ -7,6 +7,7 @@ import org.rsmod.api.type.refs.queue.QueueReferences
 import org.rsmod.api.type.refs.seq.SeqReferences
 import org.rsmod.api.type.refs.spot.SpotanimReferences
 import org.rsmod.api.type.refs.varbit.VarBitReferences
+import org.rsmod.game.type.synth.SynthType
 
 object nylocas_locs : LocReferences() {
     val barrier = find("tob_arena_barrier")
@@ -84,6 +85,7 @@ object nylocas_seqs : SeqReferences() {
 }
 
 object nylocas_spots : SpotanimReferences() {
+    val shielded = find("tob_nylocas_shielded")
     val melee_standard = find("tob_nylocas_death_melee_standard")
     val ranged_standard = find("tob_nylocas_death_ranged_standard")
     val magic_standard = find("tob_nylocas_death_magic_standard")
@@ -104,6 +106,12 @@ object nylocas_spots : SpotanimReferences() {
             NylocasStyle.Ranged -> ranged_detonate
             NylocasStyle.Magic -> magic_detonate
         }
+}
+
+internal object NylocasSynths {
+    // Existing cache cancel_prayer sound, absent from this workspace's synth symbols.
+    // https://gist.github.com/Jire/d8db4e0964feb92c719b95cf4821ab2c
+    val cancelled = SynthType(2663, "cancel_prayer")
 }
 
 object tob_interfaces : InterfaceReferences() {

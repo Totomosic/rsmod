@@ -12,6 +12,7 @@ import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.proj.ProjAnim
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.ObjTypeList
@@ -222,6 +223,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         attackStyle: RangedAttackStyle?,
         blockType: RangedAttackType?,
         multiplier: Double,
+        checkDamageRestrictions: Boolean = true,
     ): Boolean =
         manager.rollRangedAccuracy(
             source = source.player,
@@ -230,7 +232,12 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
             attackStyle = attackStyle,
             blockType = blockType,
             multiplier = multiplier,
+            checkDamageRestrictions = checkDamageRestrictions,
         )
+
+    /** @see [PlayerAttackManager.canDamage] */
+    public fun canDamage(source: ProtectedAccess, target: PathingEntity, style: HitType): Boolean =
+        manager.canDamage(source.player, target, style)
 
     /** @see [PlayerAttackManager.rollRangedMaxHit] */
     public fun rollRangedMaxHit(

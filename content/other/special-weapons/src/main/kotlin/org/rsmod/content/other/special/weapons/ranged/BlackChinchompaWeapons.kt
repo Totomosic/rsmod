@@ -18,6 +18,7 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.Wearpos
 
@@ -87,10 +88,12 @@ constructor(
                     attack.style,
                     attack.type,
                     1.0,
+                    // Damage immunity on the primary must not suppress the whole explosion.
+                    checkDamageRestrictions = false,
                 )
             for (target in targets) {
                 val damage =
-                    if (accurate) {
+                    if (manager.canDamage(this, target, HitType.Ranged) && accurate) {
                         manager.rollRangedMaxHit(this, target, attack.type, attack.style, 1.0, 0)
                     } else {
                         0
