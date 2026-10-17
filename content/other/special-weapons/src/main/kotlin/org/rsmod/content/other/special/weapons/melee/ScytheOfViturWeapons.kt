@@ -120,8 +120,8 @@ constructor(private val random: GameRandom, private val search: NpcSearch) : Wea
                     rolled
                 }
 
-            manager.giveCombatXp(this, target, attack, damage.sum())
             for (splat in damage) {
+                manager.giveCombatXp(this, target, attack, splat)
                 manager.queueMeleeHit(this, target, splat, delay = 1)
             }
         }

@@ -54,7 +54,8 @@ class SulphurBladesWeapons @Inject constructor(private val random: GameRandom) :
             val firstDamage = rollDamage(target, attack, firstMaxHit)
             val secondDamage = rollDamage(target, attack, secondMaxHit)
 
-            manager.giveCombatXp(this, target, attack, firstDamage + secondDamage)
+            manager.giveCombatXp(this, target, attack, firstDamage)
+            manager.giveCombatXp(this, target, attack, secondDamage)
             manager.playWeaponFx(this, attack)
             manager.queueMeleeHit(this, target, firstDamage, delay = 1)
             manager.queueMeleeHit(this, target, secondDamage, delay = 1)

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.CombatStance
@@ -52,6 +53,28 @@ import org.rsmod.routefinder.flag.CollisionFlag
 
 @Execution(ExecutionMode.SAME_THREAD)
 class ScytheOfViturTest {
+    @ParameterizedTest
+    @CsvSource("8, 2, 16", "8, 3, 24", "4, 3, 12", "40, 3, 24")
+    fun `each scythe splat awards XP independently of the other splats`(
+        targetHp: Int,
+        size: Int,
+        xpDamage: Int,
+        state: GameTestState,
+    ) =
+        state.runScytheTest { deps ->
+            val npc =
+                spawnDummy(npcSize = size, maxHp = targetHp).also { it.combatXpMultiplier = 1000 }
+            setMaxHit(deps, npc, 32)
+            val before = player.statMap.getXP(stats.attack)
+            repeat(size) {
+                random.next = HIT_ROLL
+                random.then = 8
+            }
+            useScythe(deps, npc)
+            assertEquals(before + xpDamage * 4, player.statMap.getXP(stats.attack))
+            assertEquals(targetHp, npc.hitpoints)
+        }
+
     @Test
     fun GameTestState.`sweep hits up to three NPCs stacked on the primary tile`() =
         runScytheTest(MaximumDamageRandom()) { deps ->
@@ -417,12 +440,16 @@ class ScytheOfViturTest {
         }
     }
 
-    private fun GameTestScope.spawnDummy(npcSize: Int, combatDummy: Boolean = false): Npc {
+    private fun GameTestScope.spawnDummy(
+        npcSize: Int,
+        combatDummy: Boolean = false,
+        maxHp: Int = DUMMY_HITPOINTS,
+    ): Npc {
         val type =
             npcTypeFactory.create(id = if (combatDummy) npcs.combat_dummy.id else 0) {
                 name = "Dummy"
                 size = npcSize
-                hitpoints = DUMMY_HITPOINTS
+                hitpoints = maxHp
                 defence = 50
                 op[1] = "Attack"
                 defaultMode = NpcMode.None

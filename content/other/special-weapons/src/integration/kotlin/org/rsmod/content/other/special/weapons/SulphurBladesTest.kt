@@ -7,6 +7,8 @@ import kotlin.reflect.KClass
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
@@ -40,6 +42,57 @@ import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class SulphurBladesTest {
+    @ParameterizedTest
+    @CsvSource(
+        "8, 8, 8, 16",
+        "4, 8, 8, 8",
+        "40, 8, 8, 16",
+        "8, 0, 8, 8",
+        "8, 8, 0, 8",
+        "8, 0, 0, 0",
+    )
+    fun `each blade awards XP independently of the other blade`(
+        targetHp: Int,
+        firstDamage: Int,
+        secondDamage: Int,
+        xpDamage: Int,
+        state: GameTestState,
+    ) {
+        for (playerTarget in listOf(false, true)) {
+            state.runWeaponsTest { deps ->
+                val target =
+                    if (playerTarget) {
+                        registerPlayer(CoordGrid(3200, 3200)).also {
+                            it.setBaseLevel(stats.hitpoints, targetHp)
+                            it.setCurrentLevel(stats.hitpoints, targetHp)
+                        }
+                    } else {
+                        spawnNpc(
+                            CoordGrid(3200, 3200),
+                            npcTypeFactory.create {
+                                name = "Low HP dummy"
+                                hitpoints = targetHp
+                                defence = 50
+                                defaultMode = NpcMode.None
+                            },
+                        ) {
+                            combatXpMultiplier = 1000
+                        }
+                    }
+                player.placeAt(target.coords.translateZ(1))
+                equipBlades()
+                setMaxHit(deps, target, 16)
+                val before = player.statMap.getXP(stats.attack)
+                for (damage in listOf(firstDamage, secondDamage)) {
+                    random.next = if (damage == 0) MISS_ROLL else HIT_ROLL
+                    if (damage > 0) random.then = damage
+                }
+                useBlades(deps, target)
+                assertEquals(before + xpDamage * 4, player.statMap.getXP(stats.attack))
+            }
+        }
+    }
+
     @Test
     fun GameTestState.`odd max hit splits into 22 and 23 and lands on the same tick`() {
         val damageRandom = MaximumDamageRandom()
