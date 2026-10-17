@@ -37,4 +37,6 @@ dependencies {
     implementation(projects.engine.map)
     implementation(projects.engine.plugin)
     integrationImplementation(projects.api.pluginCommons)
+    integrationImplementation(projects.api.registry)
+    integrationImplementation(projects.content.areas.dungeons.nylocas)
 }

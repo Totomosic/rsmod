@@ -7,6 +7,7 @@ import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.queues
+import org.rsmod.api.player.clearInteractionRoute
 import org.rsmod.api.player.hit.queueHit
 import org.rsmod.api.player.isValidTarget
 import org.rsmod.api.random.GameRandom
@@ -26,6 +27,7 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.HitType
+import org.rsmod.game.interact.InteractionNpc
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
@@ -257,7 +259,15 @@ constructor(
             } else {
                 nylocas_npcs.incoming(state.spawn.size, state.style)
             }
-        if (npc.visType.id != type.id) npc.transmog(npcTypes[type], Int.MAX_VALUE)
+        if (npc.visType.id == type.id) return
+        npc.transmog(npcTypes[type], Int.MAX_VALUE)
+        // A new form requires a fresh click, including attacks waiting on cooldown.
+        for (player in players) {
+            val interaction = player.interaction as? InteractionNpc ?: continue
+            if (interaction.target != npc) continue
+            player.clearInteractionRoute()
+            player.resetFaceEntity()
+        }
     }
 
     private fun pillarTiles(region: Region, pillar: NylocasPillar, size: Int): List<CoordGrid> {
