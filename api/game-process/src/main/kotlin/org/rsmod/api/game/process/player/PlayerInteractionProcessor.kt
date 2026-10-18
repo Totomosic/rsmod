@@ -72,6 +72,9 @@ constructor(
             // A new red-x keeps its target but cannot start moving until the stall ends.
             // An interaction from an earlier turn can keep approaching while access is blocked.
             if (interaction?.hasStarted != true) return
+            // Combat may already have stopped at weapon range. Without its script running,
+            // rerouting a stationary interaction would incorrectly pull it into melee range.
+            if (player.routeDestination.isEmpty()) return
         }
 
         if (interaction != null && !player.isAccessProtected) {

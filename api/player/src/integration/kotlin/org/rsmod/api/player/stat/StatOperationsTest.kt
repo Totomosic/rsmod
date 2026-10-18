@@ -1,6 +1,8 @@
 package org.rsmod.api.player.stat
 
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.testing.GameTestState
 
@@ -152,6 +154,32 @@ class StatOperationsTest {
         player.setCurrentLevel(stats.hitpoints, 1)
 
         player.statHeal(stats.hitpoints, constant = 0, percent = 100)
+        assertEquals(99, player.hitpoints)
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = [99, 100, 250, 255])
+    fun `statHeal preserves hitpoints at or above base`(current: Int, state: GameTestState) =
+        state.runGameTest {
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, current)
+
+            player.statHeal(stats.hitpoints, constant = 7, percent = 0)
+            assertEquals(current, player.hitpoints)
+
+            player.statHeal(stats.hitpoints, constant = 0, percent = 100)
+            assertEquals(current, player.hitpoints)
+        }
+
+    @Test
+    fun GameTestState.`statHeal restores incrementally up to base hitpoints`() = runGameTest {
+        player.setBaseLevel(stats.hitpoints, 99)
+        player.setCurrentLevel(stats.hitpoints, 80)
+
+        player.statHeal(stats.hitpoints, constant = 5, percent = 10)
+        assertEquals(94, player.hitpoints)
+
+        player.statHeal(stats.hitpoints, constant = 5, percent = 10)
         assertEquals(99, player.hitpoints)
     }
 }

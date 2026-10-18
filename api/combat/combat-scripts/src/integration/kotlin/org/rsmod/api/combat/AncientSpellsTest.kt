@@ -197,6 +197,48 @@ class AncientSpellsTest {
             assertEquals(listOf(npc, npc, npc), attacks)
         }
 
+    @ParameterizedTest
+    @ValueSource(ints = [3, 7])
+    fun `ongoing ranged combat stays in range during SBS and resumes afterwards`(
+        distance: Int,
+        state: GameTestState,
+    ) =
+        state.runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {
+            val npc = spawnTarget()
+            player.placeAt(npc.coords.translateZ(distance))
+            player.worn[Wearpos.RightHand.slot] = InvObj(objs.magic_shortbow)
+            player.worn[Wearpos.Quiver.slot] = InvObj(objs.rune_arrow, 100)
+            player.observerUUID = 1 // Normally assigned on login; required for dropped arrows.
+            player.setBaseLevel(stats.ranged, 99)
+            player.setCurrentLevel(stats.ranged, 99)
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, 2)
+            player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+            val owner = player
+            val attacks = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attacks += target
+            }
+            advance(ticks = 25)
+            val start = player.coords
+            player.opNpc2(npc)
+            advance(ticks = 1)
+            assertEquals(listOf(npc), attacks)
+            assertEquals(start, player.coords)
+
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            repeat(3) {
+                advance(ticks = 1)
+                assertEquals(start, player.coords)
+                assertEquals(listOf(npc), attacks)
+                assertNotNull(player.interaction)
+            }
+
+            advance(ticks = 4)
+            assertEquals(0, player.vars[varbits.spellbook])
+            assertEquals(start, player.coords)
+            assertEquals(listOf(npc, npc), attacks)
+        }
+
     @Test
     fun GameTestState
         .`an existing attack approaches during SBS but attacks only after the stall`() =
@@ -415,6 +457,26 @@ class AncientSpellsTest {
             random.then = 29
             cast(deps, primary, objs.spell_blood_barrage)
             assertEquals(99, player.stats[stats.hitpoints])
+        }
+
+    @Test
+    fun GameTestState.`blood barrage preserves boosted hitpoints and still damages its target`() =
+        runAncientTest { deps ->
+            val primary = spawnBarragePrimary()
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 250)
+            advance()
+            random.next = 0
+            random.then = 29
+
+            cast(deps, primary, objs.spell_blood_barrage)
+
+            assertEquals(250, player.stats[stats.hitpoints])
+            assertEquals(29, primary.pendingHits().single().damage)
+            assertEquals(player.currentMapClock + 5, player.actionDelay)
+            advance(ticks = 6)
+            assertEquals(171, primary.hitpoints)
+            assertEquals(250, player.stats[stats.hitpoints])
         }
 
     @Test

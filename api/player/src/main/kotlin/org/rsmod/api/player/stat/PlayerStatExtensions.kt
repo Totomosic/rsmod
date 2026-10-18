@@ -212,8 +212,8 @@ public fun Player.statDrain(stat: StatType, constant: Int, percent: Int) {
  * Restores the player's stat level towards their **base** level.
  *
  * This function increases the player's stat level by a combination of a constant value and a
- * percentage of their **base** level. The restored level will never exceed the player's base level
- * and will not decrease their current level.
+ * percentage of their **base** level, capped at that base level. A current level already at or
+ * above the base level is preserved.
  *
  * Commonly used to recover from temporary stat reductions or provide partial stat restoration.
  *
@@ -239,7 +239,7 @@ public fun Player.statHeal(stat: StatType, constant: Int, percent: Int) {
     val base = statBase(stat)
     val current = stat(stat)
     val calculated = current + (constant + (base * percent) / 100)
-    val cappedLevel = calculated.coerceIn(current, base)
+    val cappedLevel = calculated.coerceIn(current, max(current, base))
 
     statMap.setCurrentLevel(stat, cappedLevel.toByte())
     updateStat(stat)
