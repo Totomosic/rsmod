@@ -2,12 +2,18 @@ package org.rsmod.content.other.commands
 
 import jakarta.inject.Inject
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
+import net.rsprot.protocol.game.outgoing.misc.player.UpdateRunEnergy
+import net.rsprot.protocol.game.outgoing.varp.VarpLarge
 import org.junit.jupiter.api.Test
+import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.stat.statBase
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.content.areas.dungeons.nylocas.NyloMaxHit
@@ -132,14 +138,50 @@ class NylocasDevelopmentCommandTest {
         ) { deps ->
             player.modLevel = deps.modLevels[modlevels.player]
             player.displayName = "Raid Host"
+            advance(ticks = 2)
+            for (stat in cacheTypes.stats.values) {
+                player.setBaseLevel(stat, 80)
+                player.setCurrentLevel(stat, if (stat == stats.attack) 110 else 10)
+            }
+            val hostXp = cacheTypes.stats.values.associateWith { player.statMap.getFineXP(it) }
+            player.runEnergy = 0
+            player.setVarp(varps.sa_energy, 0)
+            client.clearOutgoing()
             deps.handler.handle(player, ClientCheat("theatrecreate"))
+            assertEquals(constants.run_max_energy, player.runEnergy)
+            assertEquals(constants.sa_max_energy, player.vars[varps.sa_energy])
+            assertTrue(UpdateRunEnergy(constants.run_max_energy) in client)
+            assertTrue(VarpLarge(varps.sa_energy.id, constants.sa_max_energy) in client)
             advance()
+            for (stat in cacheTypes.stats.values) {
+                assertEquals(80, player.stat(stat))
+                assertEquals(80, player.statBase(stat))
+                assertEquals(hostXp[stat], player.statMap.getFineXP(stat))
+            }
             val room = checkNotNull(deps.regions[player.coords])
             assertEquals(CoordGrid(3322, 4447, 0), deps.regions.normalizeCoords(player.coords))
-            val guest = registerPlayer(coords = CoordGrid(3222, 3218, 0))
+            val guest = registerPlayer(coords = CoordGrid(3222, 3218, 0), client = client)
             guest.modLevel = deps.modLevels[modlevels.player]
+            advance()
+            for (stat in cacheTypes.stats.values) {
+                guest.setBaseLevel(stat, 70)
+                guest.setCurrentLevel(stat, 5)
+            }
+            val guestXp = cacheTypes.stats.values.associateWith { guest.statMap.getFineXP(it) }
+            guest.runEnergy = 0
+            guest.setVarp(varps.sa_energy, 0)
+            client.clearOutgoing()
             deps.handler.handle(guest, ClientCheat("theatrejoin rAiD hOsT"))
             assertEquals(player.coords, guest.coords)
+            assertEquals(constants.run_max_energy, guest.runEnergy)
+            assertEquals(constants.sa_max_energy, guest.vars[varps.sa_energy])
+            assertTrue(UpdateRunEnergy(constants.run_max_energy) in client)
+            assertTrue(VarpLarge(varps.sa_energy.id, constants.sa_max_energy) in client)
+            for (stat in cacheTypes.stats.values) {
+                assertEquals(70, guest.stat(stat))
+                assertEquals(70, guest.statBase(stat))
+                assertEquals(guestXp[stat], guest.statMap.getFineXP(stat))
+            }
             deps.handler.handle(guest, ClientCheat("theatrestart"))
             assertEquals(0, guest.vars[tob_varbits.party_status])
             deps.handler.handle(player, ClientCheat("theatrestart"))
@@ -149,7 +191,15 @@ class NylocasDevelopmentCommandTest {
             assertEquals(2, guest.vars[tob_varbits.party_slot])
             val late = registerPlayer(coords = CoordGrid(3222, 3218, 0))
             late.modLevel = deps.modLevels[modlevels.player]
+            late.setCurrentLevel(stats.hitpoints, 5)
+            late.setCurrentLevel(stats.prayer, 0)
+            late.runEnergy = 1234
+            late.setVarp(varps.sa_energy, 250)
             deps.handler.handle(late, ClientCheat("theatrejoin raid host"))
+            assertEquals(5, late.hitpoints)
+            assertEquals(0, late.stat(stats.prayer))
+            assertEquals(1234, late.runEnergy)
+            assertEquals(250, late.vars[varps.sa_energy])
             assertNull(deps.regions[late.coords])
             assertEquals(room.uid, deps.regions[guest.coords]?.uid)
         }

@@ -10,14 +10,20 @@ import java.util.HexFormat
 import java.util.UUID
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
+import net.rsprot.protocol.game.outgoing.misc.player.UpdateRunEnergy
+import net.rsprot.protocol.game.outgoing.varp.VarpLarge
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.parsers.json.Json
 import org.rsmod.api.player.events.interact.HeldEquipEvents
+import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.stat.statBase
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.events.EventBus
 import org.rsmod.game.inv.InvObj
@@ -51,6 +57,7 @@ class GearPresetCommandTest {
         runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.admin]
             player.displayName = "Alice"
+            advance(ticks = 2)
             player.setCurrentLevel(stats.hitpoints, 99)
             player.worn[Wearpos.RightHand.slot] = InvObj(objs.toxic_blowpipe, 1, 1234)
             player.worn[Wearpos.Quiver.slot] = InvObj(objs.rune_arrow, 250)
@@ -78,7 +85,24 @@ class GearPresetCommandTest {
             deps.events.subscribeUnbound(HeldEquipEvents.WearposChange::class.java) {
                 changed += wearpos
             }
+            for (stat in cacheTypes.stats.values) {
+                player.setBaseLevel(stat, 80)
+                player.setCurrentLevel(stat, if (stat == stats.attack) 110 else 5)
+            }
+            val xp = cacheTypes.stats.values.associateWith { player.statMap.getFineXP(it) }
+            player.runEnergy = 0
+            player.setVarp(varps.sa_energy, 0)
+            client.clearOutgoing()
             deps.handler.handle(player, ClientCheat("gearsetups load 1234abcd ${preset.id}"))
+            assertEquals(constants.run_max_energy, player.runEnergy)
+            assertEquals(constants.sa_max_energy, player.vars[varps.sa_energy])
+            assertTrue(UpdateRunEnergy(constants.run_max_energy) in client)
+            assertTrue(VarpLarge(varps.sa_energy.id, constants.sa_max_energy) in client)
+            for (stat in cacheTypes.stats.values) {
+                assertEquals(80, player.stat(stat))
+                assertEquals(80, player.statBase(stat))
+                assertEquals(xp[stat], player.statMap.getFineXP(stat))
+            }
             assertEquals(equipment, player.worn.toList())
             assertEquals(inventory, player.inv.toList())
             assertTrue(
@@ -137,7 +161,10 @@ class GearPresetCommandTest {
     fun GameTestState.`invalid setups are rejected before either live container changes`() =
         runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.admin]
-            player.setCurrentLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 5)
+            player.setCurrentLevel(stats.prayer, 0)
+            player.runEnergy = 1234
+            player.setVarp(varps.sa_energy, 250)
             player.worn[Wearpos.RightHand.slot] = InvObj(objs.abyssal_whip)
             player.inv[0] = InvObj(objs.coins, 100)
             val equipment = player.worn.toList()
@@ -162,6 +189,10 @@ class GearPresetCommandTest {
                 deps.handler.handle(player, ClientCheat("gearsetups load 1234abcd ${invalid.id}"))
                 assertEquals(equipment, player.worn.toList())
                 assertEquals(inventory, player.inv.toList())
+                assertEquals(5, player.stat(stats.hitpoints))
+                assertEquals(0, player.stat(stats.prayer))
+                assertEquals(1234, player.runEnergy)
+                assertEquals(250, player.vars[varps.sa_energy])
             }
         }
 

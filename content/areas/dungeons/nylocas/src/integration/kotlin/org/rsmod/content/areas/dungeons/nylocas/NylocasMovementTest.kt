@@ -23,6 +23,7 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.NpcList
+import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.map.collision.add
 import org.rsmod.game.map.collision.remove
 import org.rsmod.game.region.Region
@@ -44,6 +45,113 @@ class NylocasMovementTest {
         val events: EventBus,
         val clock: MapClock,
     )
+
+    @ParameterizedTest
+    @CsvSource("Small, false", "Big, false", "Small, true", "Big, true")
+    fun `pillar arrivals ignore players but retain NPC occupancy at pillar contact`(
+        size: NylocasSize,
+        blockedByNpc: Boolean,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    westNorth = NylocasSpawn(size, NylocasStyle.Magic, NylocasPillar.NorthEast),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val npc = deps.npcs.single()
+            val contact = room.normal[CoordGrid(3302 - npc.size, 4253 - npc.size, 0)]
+            player.telejump(contact)
+            if (blockedByNpc) {
+                spawnNpc(contact, npc.type) {
+                    collisionSize = 1
+                    mode = NpcMode.None
+                    setHunt(0)
+                    aiTimer(0)
+                }
+            }
+            npc.telejump(contact.translateZ(-1))
+            advance()
+            if (blockedByNpc) assertNotEquals(contact, npc.coords)
+            else assertEquals(contact, npc.coords)
+            assertEquals(contact, player.coords)
+        }
+
+    @ParameterizedTest
+    @EnumSource(NylocasSize::class)
+    fun `fighting nylos cannot walk through a player blocking a narrow corridor`(
+        size: NylocasSize,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(NylocasWave(4, westNorth = NylocasSpawn(size, NylocasStyle.Melee))),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val npc = deps.npcs.single()
+            val anchor = room.normal[CoordGrid(3294, 4248, 0)]
+            player.telejump(anchor.translateX(npc.size))
+            registerPlayer(coords = room.normal[CoordGrid(3301, 4248, 0)])
+            for (x in 3293..3302) {
+                for (z in listOf(4247, 4248 + npc.size)) {
+                    deps.collision.add(room.normal[CoordGrid(x, z, 0)], CollisionFlag.LOC)
+                }
+            }
+            npc.telejump(anchor)
+            random.next = 1
+            advance()
+            assertEquals(anchor, npc.coords)
+        }
+
+    @Test
+    fun GameTestState.`a pillar nylo passing through a player keeps fighting nylos blocked`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    westNorth =
+                        NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic, NylocasPillar.NorthEast),
+                    westSouth = NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val pillar = deps.npcs.single { it.visType.id == nylocas_npcs.small_magic.id }
+            val fighting = deps.npcs.single { it.visType.id == nylocas_npcs.small_fighting_melee.id }
+            val blocked = room.normal[CoordGrid(3301, 4250, 0)]
+            player.telejump(blocked)
+            registerPlayer(coords = room.normal[CoordGrid(3301, 4252, 0)])
+            for (z in 4247..4254) {
+                for (x in listOf(3300, 3302)) {
+                    deps.collision.add(room.normal[CoordGrid(x, z, 0)], CollisionFlag.LOC)
+                }
+            }
+            pillar.telejump(blocked.translateZ(-1))
+            fighting.telejump(blocked.translateZ(-2))
+            repeat(2) {
+                random.next = 1
+                advance()
+            }
+            assertEquals(blocked.translateZ(1), pillar.coords)
+            assertEquals(blocked.translateZ(-1), fighting.coords)
+        }
 
     @ParameterizedTest
     @CsvSource(

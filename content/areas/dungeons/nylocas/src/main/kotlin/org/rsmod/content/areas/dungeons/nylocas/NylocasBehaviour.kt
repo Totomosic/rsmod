@@ -45,6 +45,7 @@ import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.npc.NpcTypeList
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.ScriptContext
 import org.rsmod.routefinder.Route
 import org.rsmod.routefinder.collision.CollisionFlagMap
@@ -153,7 +154,9 @@ constructor(
             // Multi-hit weapons produce one cue per attacker/target this tick. Keep the shield
             // separate from spell impacts and splashes, which use the default spotanim slot.
             state.nullFeedbackCycles[playerId] = clock.cycle
-            check.source.soundSynth(NylocasSynths.cancelled)
+            // Synth packets have no gain control. Mix two synchronized copies for a louder
+            // cue; increasing loops would only repeat it for longer.
+            repeat(2) { check.source.soundSynth(NylocasSynths.cancelled) }
             check.target.spotanim(nylocas_spots.shielded, slot = constants.spotanim_slot_combat)
         }
     }
@@ -319,6 +322,9 @@ constructor(
             return
         }
         val candidates = players.filter { validTarget(it, state.region) }
+        // A pillar arrival leaving a player's tile clears their shared collision bit.
+        // Reapply player reservations before fighting nylos validate their movement.
+        for (player in candidates) player.addBlockWalkCollision(collision, player.coords)
         // Roll independently every tick, including during cooldown and with repeats allowed.
         val target = random.pickOrNull(candidates) ?: return
         npc.facePlayer(target)
@@ -468,9 +474,24 @@ constructor(
             )
         return candidates.firstOrNull { tile ->
             tile != npc.coords &&
-                collision[tile] and CollisionFlag.BLOCK_NPCS == 0 &&
+                !pillarBlocked(tile) &&
                 steps.validated(npc.coords, tile, npc.collisionSize) == tile
         } ?: CoordGrid.NULL
+    }
+
+    private fun pillarBlocked(tile: CoordGrid): Boolean {
+        if (collision[tile] and CollisionFlag.BLOCK_NPCS == 0) return false
+        // Players share BLOCK_NPCS with NPCs, but only NPC occupancy blocks pillar arrivals.
+        if (players.none { it.isVisible && it.coords == tile }) return true
+        // A player may stand underneath an NPC; keep that NPC's reservation, including
+        // the full footprint of fighting bigs. Do not remove flags from the shared map.
+        return npcRepo.findAll(ZoneKey.from(tile), zoneRadius = 1).any { other ->
+            other.isVisible &&
+                (other.blockWalkCollisionFlag ?: 0) and CollisionFlag.BLOCK_NPCS != 0 &&
+                tile.level == other.coords.level &&
+                tile.x in other.coords.x until other.coords.x + other.collisionSize &&
+                tile.z in other.coords.z until other.coords.z + other.collisionSize
+        }
     }
 
     private fun validTarget(player: Player, region: Region): Boolean {

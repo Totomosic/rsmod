@@ -102,7 +102,7 @@ class BlackChinchompaTest {
 
     @ParameterizedTest
     @CsvSource("1, 0", "1, 9999", "9, 0", "9, 9999", "10, 0", "10, 9999")
-    fun `each throw plays one explosion at the primary tile when the projectile lands`(
+    fun `each throw plays a release sound and one explosion when the projectile lands`(
         distance: Int,
         accuracyRoll: Int,
         state: GameTestState,
@@ -132,12 +132,23 @@ class BlackChinchompaTest {
                     checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
                         .filterIsInstance<MapProjAnimV2>()
                         .single()
-                val explosion =
+                val sounds =
                     listOf(ZoneKey.from(player.coords), ZoneKey.from(target.coords))
                         .distinct()
                         .flatMap { deps.zoneUpdates[it]?.toList().orEmpty() }
                         .filterIsInstance<SoundArea>()
-                        .single()
+                assertEquals(2, sounds.size)
+                val launch = sounds.single { it.id == 359 }
+                assertEquals(0, launch.delay)
+                assertEquals(1, launch.loops)
+                assertEquals(ZoneGrid.from(player.coords).x, launch.xInZone)
+                assertEquals(ZoneGrid.from(player.coords).z, launch.zInZone)
+                assertTrue(
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)]).any {
+                        it === launch
+                    }
+                )
+                val explosion = sounds.single { it.id == 360 }
                 assertEquals(360, explosion.id)
                 assertEquals(projectile.endTime, explosion.delay)
                 assertTrue(explosion.delay > 0)

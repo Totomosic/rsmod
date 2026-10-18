@@ -4,11 +4,16 @@ import jakarta.inject.Inject
 import java.util.HexFormat
 import java.util.UUID
 import org.rsmod.api.combat.manager.PlayerAttackManager
+import org.rsmod.api.config.constants
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.clearInteractionRoute
 import org.rsmod.api.player.events.interact.HeldEquipEvents
 import org.rsmod.api.player.output.ChatType
+import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.stat.statRestoreAll
+import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.script.onCommand as registerCommand
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
@@ -16,6 +21,7 @@ import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.type.stat.StatTypeList
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -26,7 +32,10 @@ constructor(
     private val objects: ObjTypeList,
     private val combat: PlayerAttackManager,
     private val events: EventBus,
+    private val statTypes: StatTypeList,
 ) : PluginScript() {
+    private var Player.specialAttackEnergy by intVarp(varps.sa_energy)
+
     override fun ScriptContext.startup() {
         registerCommand("gearsetups") {
             desc = "Save, list, or restore development equipment and inventory setups"
@@ -114,6 +123,10 @@ constructor(
             events.publish(HeldEquipEvents.WearposChange(player, wearpos, objects[item]))
         }
         player.rebuildAppearance()
+        player.statRestoreAll(statTypes.values)
+        player.specialAttackEnergy = constants.sa_max_energy
+        player.runEnergy = constants.run_max_energy
+        UpdateRun.energy(player, player.runEnergy)
     }
 
     private fun validate(items: List<GearPresetItem?>, size: Int): List<InvObj?> {

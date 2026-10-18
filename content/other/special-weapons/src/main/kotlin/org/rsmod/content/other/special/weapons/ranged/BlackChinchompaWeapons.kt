@@ -66,6 +66,7 @@ constructor(
             // Materialize the search at launch: movement during flight cannot change the victims.
             val targets = splashTargets.find(this, primary)
             manager.playWeaponFx(this, attack)
+            manager.soundArea(player, BlackChinchompaSynths.launch, radius = 10)
             spotanim(
                 weaponType.paramOrNull(params.proj_launch),
                 height = 96,

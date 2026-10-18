@@ -527,7 +527,10 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(2663, client.single<SynthSound>().id)
+            assertEquals(
+                List(2) { SynthSound(2663, 1, 0) },
+                client.filterIsInstance<SynthSound>(),
+            )
             val orb = EntitySpotanim(npc.pendingSpotanims.single())
             assertEquals(1558, orb.id)
             assertEquals(constants.spotanim_slot_combat, orb.slot)
@@ -537,7 +540,7 @@ class NylocasDamageTest {
 
             // Further splats on the same tick do not duplicate the cue or affect teammates.
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(1, client.countOf<SynthSound>())
+            assertEquals(2, client.countOf<SynthSound>())
             assertEquals(1, npc.pendingSpotanims.size)
             assertTrue(roll(deps, npc, NylocasStyle.Melee, teammate) > 0)
             assertTrue(teammateClient.hasNone<SynthSound>())
@@ -546,7 +549,10 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(2663, client.single<SynthSound>().id)
+            assertEquals(
+                List(2) { SynthSound(2663, 1, 0) },
+                client.filterIsInstance<SynthSound>(),
+            )
             assertEquals(1558, EntitySpotanim(npc.pendingSpotanims.single()).id)
         }
 
@@ -621,7 +627,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             for (npc in targets.values) npc.pendingSpotanims.clear()
             bash(deps, primary)
-            assertEquals(2, client.countOf<SynthSound> { it.id == 2663 })
+            assertEquals(4, client.countOf<SynthSound> { it.id == 2663 })
             assertEquals(
                 1,
                 primary.pendingSpotanims.map { EntitySpotanim(it) }.count { it.id == 1558 },

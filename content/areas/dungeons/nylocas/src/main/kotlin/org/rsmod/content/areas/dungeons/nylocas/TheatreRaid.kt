@@ -2,18 +2,23 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.statAdd
+import org.rsmod.api.player.stat.statRestoreAll
 import org.rsmod.api.player.stat.statSub
 import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onPlayerLogin
@@ -22,6 +27,7 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.region.Region
+import org.rsmod.game.type.stat.StatTypeList
 import org.rsmod.game.type.varbit.VarBitType
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.square.MapSquareKey
@@ -35,13 +41,16 @@ constructor(
     private val regions: RegionRegistry,
     private val players: PlayerList,
     private val eventBus: EventBus,
+    private val statTypes: StatTypeList,
 ) : PluginScript() {
     private val raids = mutableMapOf<Int, Raid>()
     private val lobbies = mutableMapOf<Int, Lobby>()
+    private var Player.specialAttackEnergy by intVarp(varps.sa_energy)
 
     fun createLobby(player: Player, region: Region) {
         process()
         lobbies[region.uid] = Lobby(region, player)
+        player.restoreResources()
         player.mes("Lobby created. Friends can join using your name. Click Start raid when ready.")
     }
 
@@ -65,8 +74,16 @@ constructor(
             player.mes("That lobby is full. The Theatre supports up to five players.")
             return null
         }
+        player.restoreResources()
         player.mes("Joined the lobby. Wait for the host to click Start raid.")
         return lobby.region.normal[BloatExitRoom.doorstep]
+    }
+
+    private fun Player.restoreResources() {
+        statRestoreAll(statTypes.values)
+        specialAttackEnergy = constants.sa_max_energy
+        runEnergy = constants.run_max_energy
+        UpdateRun.energy(this, runEnergy)
     }
 
     fun startLobby(player: Player, options: TheatreRaidOptions = TheatreRaidOptions()) {
