@@ -4,9 +4,13 @@ import jakarta.inject.Inject
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import org.junit.jupiter.api.Test
 import org.rsmod.api.config.refs.modlevels
+import org.rsmod.api.config.refs.stats
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
+import org.rsmod.api.player.stat.baseHitpointsLvl
+import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
+import org.rsmod.content.areas.dungeons.nylocas.NyloMaxHit
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
 import org.rsmod.content.areas.dungeons.nylocas.tob_interfaces
@@ -29,6 +33,45 @@ class NylocasDevelopmentCommandTest {
         val collision: CollisionFlagMap,
         val raid: TheatreRaid,
     )
+
+    @Test
+    fun GameTestState.`raid options validate exclusive modes and set party current HP once`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasDevelopmentCommand::class,
+            TheatreRaid::class,
+        ) { deps ->
+            player.modLevel = deps.modLevels[modlevels.player]
+            deps.handler.handle(player, ClientCheat("theatrecreate"))
+            advance()
+            val room = checkNotNull(deps.regions[player.coords])
+            val guest = registerPlayer(coords = player.coords)
+            val outsider = registerPlayer(coords = CoordGrid(3222, 3218, 0))
+            for (member in listOf(player, guest, outsider)) {
+                member.setBaseLevel(stats.hitpoints, 99)
+                member.setCurrentLevel(stats.hitpoints, 99)
+            }
+            for (invalid in listOf("1 maxhit-all maxhit-slow", "1 bogus", "21 hp250 bad")) {
+                deps.handler.handle(player, ClientCheat("theatrestart $invalid"))
+                assertFalse(deps.raid.isStarted(player, room))
+                assertEquals(99, guest.hitpoints)
+            }
+            deps.handler.handle(player, ClientCheat("theatrestart 21 maxhit-slow hp250"))
+            assertEquals(
+                TheatreRaidOptions(21, NyloMaxHit.SlowWeapons, true),
+                deps.raid.options(room),
+            )
+            for (member in listOf(player, guest)) {
+                assertEquals(250, member.hitpoints)
+                assertEquals(99, member.baseHitpointsLvl)
+            }
+            assertEquals(99, outsider.hitpoints)
+            guest.setCurrentLevel(stats.hitpoints, 200)
+            deps.handler.handle(player, ClientCheat("theatrestart 1 maxhit-all hp250"))
+            assertEquals(200, guest.hitpoints)
+            assertEquals(NyloMaxHit.SlowWeapons, deps.raid.options(room).nyloMaxHit)
+        }
 
     @Test
     fun GameTestState.`starting wave is validated and only the host can freeze raid options`() =

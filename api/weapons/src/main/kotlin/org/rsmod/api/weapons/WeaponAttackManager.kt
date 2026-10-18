@@ -235,6 +235,13 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
             checkDamageRestrictions = checkDamageRestrictions,
         )
 
+    /** @see [PlayerAttackManager.alwaysMaxHit] */
+    public fun alwaysMaxHit(
+        source: ProtectedAccess,
+        target: PathingEntity,
+        style: HitType,
+    ): Boolean = manager.alwaysMaxHit(source.player, target, style)
+
     /** @see [PlayerAttackManager.canDamage] */
     public fun canDamage(source: ProtectedAccess, target: PathingEntity, style: HitType): Boolean =
         manager.canDamage(source.player, target, style)

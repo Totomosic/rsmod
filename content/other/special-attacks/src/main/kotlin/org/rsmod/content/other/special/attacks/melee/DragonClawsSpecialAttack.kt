@@ -15,6 +15,7 @@ import org.rsmod.content.other.special.attacks.configs.special_spots
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitType
 
 /**
  * Dragon claws "Slice and Dice": four hits in a cascade. Up to four accuracy rolls are made, and
@@ -94,7 +95,9 @@ class DragonClawsSpecialAttack : SpecialAttackMap {
                     multiplier = 1.0,
                 )
 
-            fun roll(min: Int, max: Int): Int = random.rollDamage(min..max(min, max), target)
+            fun roll(min: Int, max: Int): Int =
+                if (manager.alwaysMaxHit(this, target, HitType.Melee)) max(min, max)
+                else random.rollDamage(min..max(min, max), target)
 
             if (accurate()) {
                 val first = roll(maxHit / 2, maxHit - 1)

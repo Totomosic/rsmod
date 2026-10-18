@@ -17,6 +17,7 @@ import org.rsmod.content.other.special.weapons.configs.special_weapon_objs
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.type.hunt.HuntVis
 
@@ -140,7 +141,9 @@ constructor(private val random: GameRandom, private val search: NpcSearch) : Wea
                     blockType = attack.type,
                     multiplier = 1.0,
                 )
-            return if (accurate && maxHit > 0) damageRandom.rollDamage(maxHit, target) else 0
+            if (!accurate || maxHit <= 0) return 0
+            return if (manager.alwaysMaxHit(this, target, HitType.Melee)) maxHit
+            else damageRandom.rollDamage(maxHit, target)
         }
     }
 }

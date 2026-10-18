@@ -7,6 +7,7 @@ import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.repo.region.RegionRepository
 import org.rsmod.content.areas.dungeons.nylocas.BloatExit
 import org.rsmod.content.areas.dungeons.nylocas.BloatExitRoom
+import org.rsmod.content.areas.dungeons.nylocas.NyloMaxHit
 import org.rsmod.content.areas.dungeons.nylocas.NylocasRoom
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
@@ -99,12 +100,24 @@ constructor(
     }
 
     private fun raidOptions(cheat: Cheat): TheatreRaidOptions? {
-        val wave = if (cheat.args.isEmpty()) 1 else cheat.args.singleOrNull()?.toIntOrNull()
+        val wave = if (cheat.args.isEmpty()) 1 else cheat.args.first().toIntOrNull()
         if (wave == null || wave !in 1..31) {
             cheat.player.mes("Starting wave must be a whole number between 1 and 31.")
             return null
         }
-        return TheatreRaidOptions(startingWave = wave)
+        val flags = cheat.args.drop(1)
+        val validFlags = setOf("maxhit-all", "maxhit-slow", "hp250")
+        if (flags.any { it !in validFlags } || ("maxhit-all" in flags && "maxhit-slow" in flags)) {
+            cheat.player.mes("Use [starting wave] [maxhit-all OR maxhit-slow] [hp250].")
+            return null
+        }
+        val maxHit =
+            when {
+                "maxhit-all" in flags -> NyloMaxHit.AllWeapons
+                "maxhit-slow" in flags -> NyloMaxHit.SlowWeapons
+                else -> NyloMaxHit.Off
+            }
+        return TheatreRaidOptions(wave, maxHit, "hp250" in flags)
     }
 
     private fun teleport(

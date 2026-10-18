@@ -8,6 +8,7 @@ dependencies {
     implementation(projects.api.registry)
     implementation(projects.api.combat.combatFormulas)
     implementation(projects.api.combat.combatCommons)
+    implementation(projects.api.combat.combatWeapon)
     integrationImplementation(projects.api.registry)
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(projects.api.deathPlugin)

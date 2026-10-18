@@ -21,6 +21,7 @@ import org.rsmod.content.other.special.attacks.configs.special_spots
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.type.seq.SeqType
 import org.rsmod.game.type.spot.SpotanimType
 import org.rsmod.game.type.stat.StatType
@@ -165,7 +166,8 @@ class GodswordSpecialAttacks : SpecialAttackMap {
             if (maxHit <= 0) {
                 return 0
             }
-            return random.rollDamage(maxHit, target)
+            return if (manager.alwaysMaxHit(this, target, HitType.Melee)) maxHit
+            else random.rollDamage(maxHit, target)
         }
 
         private fun ProtectedAccess.healingBlade(damage: Int) {

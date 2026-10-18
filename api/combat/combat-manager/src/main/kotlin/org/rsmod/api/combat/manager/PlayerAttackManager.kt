@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import kotlin.math.min
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.PlayerAttackCheck
+import org.rsmod.api.combat.commons.PlayerMaxHitCheck
 import org.rsmod.api.combat.commons.fx.MeleeAnimationAndSound
 import org.rsmod.api.combat.commons.isCombatDummy
 import org.rsmod.api.combat.commons.magic.MagicSpell
@@ -24,6 +25,7 @@ import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.commons.types.RangedAttackType
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
+import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
@@ -536,6 +538,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Melee)) return false
+        if (alwaysMaxHit(source, target, HitType.Melee)) return true
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
@@ -605,7 +608,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateMeleeMaxHit(source, target, attackType, attackStyle, multiplier)
-        return random.rollDamage(maxHit, target)
+        return rollDamage(source, target, HitType.Melee, maxHit)
     }
 
     /**
@@ -795,6 +798,7 @@ constructor(
         checkDamageRestrictions: Boolean = true,
     ): Boolean {
         if (checkDamageRestrictions && !canDamage(source, target, HitType.Ranged)) return false
+        if (checkDamageRestrictions && alwaysMaxHit(source, target, HitType.Ranged)) return true
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> {
@@ -877,7 +881,8 @@ constructor(
             source.quiver.isType(objs.dragon_arrow) &&
                 weapon != null &&
                 weapon.isCategoryType(categories.bow)
-        return random.rollDamage(maxHit, target).coerceAtLeast(if (seekingArrows) 3 else 1)
+        return rollDamage(source, target, HitType.Ranged, maxHit)
+            .coerceAtLeast(if (seekingArrows) 3 else 1)
     }
 
     /**
@@ -1144,7 +1149,13 @@ constructor(
         sunfireRune: Boolean,
     ): Boolean =
         canDamage(source, target, HitType.Magic) &&
-            (target.isCombatDummy() ||
+            (alwaysMaxHit(
+                source,
+                target,
+                HitType.Magic,
+                attackRate = constants.combat_spell_attackrate,
+            ) ||
+                target.isCombatDummy() ||
                 when (target) {
                     is Npc -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
                     is Player -> rollSpellAccuracy(source, target, spell, spellbook, sunfireRune)
@@ -1220,7 +1231,7 @@ constructor(
                 attackRate = attackRate,
                 sunfireRune = sunfireRune,
             )
-        return random.rollDamage(hitRange, target)
+        return rollDamage(source, target, HitType.Magic, hitRange, attackRate)
     }
 
     /**
@@ -1330,6 +1341,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Magic)) return false
+        if (alwaysMaxHit(source, target, HitType.Magic)) return true
         if (target.isCombatDummy()) return true
         return when (target) {
             is Npc -> rollStaffAccuracy(source, target, attackStyle, multiplier)
@@ -1385,7 +1397,7 @@ constructor(
         multiplier: Double,
     ): Int {
         val maxHit = calculateStaffMaxHit(source, target, baseMaxHit, multiplier)
-        return random.rollDamage(maxHit, target)
+        return rollDamage(source, target, HitType.Magic, maxHit)
     }
 
     /**
@@ -1804,6 +1816,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Melee)) return false
+        if (alwaysMaxHit(source, target, HitType.Melee)) return true
         return when (target) {
             is Npc -> {
                 rollMagicalMeleeAccuracy(source, target, attackType, attackStyle, multiplier)
@@ -1868,6 +1881,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Melee)) return false
+        if (alwaysMaxHit(source, target, HitType.Melee)) return true
         return when (target) {
             is Npc -> {
                 rollRangedMeleeAccuracy(
@@ -1945,6 +1959,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Magic)) return false
+        if (alwaysMaxHit(source, target, HitType.Magic)) return true
         return when (target) {
             is Npc -> rollRangedMagicAccuracy(source, target, attackStyle, blockType, multiplier)
             is Player -> rollRangedMagicAccuracy(source, target, attackStyle, multiplier)
@@ -2001,6 +2016,7 @@ constructor(
         multiplier: Double,
     ): Boolean {
         if (!canDamage(source, target, HitType.Ranged)) return false
+        if (alwaysMaxHit(source, target, HitType.Ranged)) return true
         return when (target) {
             is Npc -> {
                 rollMagicalRangedAccuracy(source, target, attackType, attackStyle, multiplier)
@@ -2053,6 +2069,35 @@ constructor(
         eventBus.publish(check)
         return check.allowed
     }
+
+    /**
+     * Encounter max-hit rules apply per attacker and target, without changing target restrictions.
+     */
+    public fun alwaysMaxHit(
+        source: Player,
+        target: PathingEntity,
+        style: HitType,
+        attackRate: Int? = null,
+    ): Boolean {
+        if (target !is Npc) return false
+        val check = PlayerMaxHitCheck(source, target, style, attackRate)
+        eventBus.publish(check)
+        return check.forced
+    }
+
+    public fun rollDamage(source: Player, target: PathingEntity, style: HitType, maxHit: Int): Int =
+        if (alwaysMaxHit(source, target, style)) maxHit.coerceAtLeast(1)
+        else random.rollDamage(maxHit, target)
+
+    public fun rollDamage(
+        source: Player,
+        target: PathingEntity,
+        style: HitType,
+        range: IntRange,
+        attackRate: Int? = null,
+    ): Int =
+        if (alwaysMaxHit(source, target, style, attackRate)) range.last
+        else random.rollDamage(range, target)
 
     public fun spawnProjectile(
         source: Player,

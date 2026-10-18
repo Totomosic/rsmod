@@ -21,6 +21,7 @@ import org.rsmod.api.specials.combat.RangedSpecialAttack
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.UnpackedObjType
 import org.rsmod.game.type.spot.SpotanimType
@@ -235,9 +236,13 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
                 )
             val first =
                 if (!accuracySuccess()) 0
+                else if (manager.alwaysMaxHit(this, target, HitType.Ranged))
+                    damage.coerceIn(damageRange)
                 else random.rollDamage(0..damage, target).coerceIn(damageRange)
             val second =
                 if (!accuracySuccess()) 0
+                else if (manager.alwaysMaxHit(this, target, HitType.Ranged))
+                    damage.coerceIn(damageRange)
                 else random.rollDamage(0..damage, target).coerceIn(damageRange)
             return DescentHit(first, second)
         }

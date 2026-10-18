@@ -93,7 +93,10 @@ constructor(
                 )
             for (target in targets) {
                 val damage =
-                    if (manager.canDamage(this, target, HitType.Ranged) && accurate) {
+                    if (
+                        manager.canDamage(this, target, HitType.Ranged) &&
+                            (accurate || manager.alwaysMaxHit(this, target, HitType.Ranged))
+                    ) {
                         manager.rollRangedMaxHit(this, target, attack.type, attack.style, 1.0, 0)
                     } else {
                         0

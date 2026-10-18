@@ -3,10 +3,12 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.combat.commons.PlayerAttackCheck
+import org.rsmod.api.combat.commons.PlayerMaxHitCheck
 import org.rsmod.api.combat.commons.PlayerSpecialAttackCheck
 import org.rsmod.api.combat.commons.player.queueCombatRetaliate
 import org.rsmod.api.combat.formulas.AccuracyFormulae
 import org.rsmod.api.combat.formulas.MaxHitFormulae
+import org.rsmod.api.combat.weapon.WeaponSpeeds
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
@@ -51,6 +53,8 @@ import org.rsmod.routefinder.flag.CollisionFlag
 class NylocasBehaviour
 @Inject
 constructor(
+    private val raid: TheatreRaid,
+    private val weaponSpeeds: WeaponSpeeds,
     private val regions: RegionRegistry,
     private val players: PlayerList,
     private val npcTypes: NpcTypeList,
@@ -79,6 +83,25 @@ constructor(
                         )) {
                         onAiTimer(type) { tick(npc) }
                         onEvent<PlayerAttackCheck>(type.id) { checkAttack(this) }
+                        onEvent<PlayerMaxHitCheck>(type.id) {
+                            val state = active[target] ?: return@onEvent
+                            val required =
+                                when (state.style) {
+                                    NylocasStyle.Melee -> HitType.Melee
+                                    NylocasStyle.Ranged -> HitType.Ranged
+                                    NylocasStyle.Magic -> HitType.Magic
+                                }
+                            if (this.style != required || source.uuid in state.nullFeedbackCycles)
+                                return@onEvent
+                            if (!raid.isStarted(source, state.region)) return@onEvent
+                            forced =
+                                when (raid.options(state.region).nyloMaxHit) {
+                                    NyloMaxHit.Off -> false
+                                    NyloMaxHit.AllWeapons -> true
+                                    NyloMaxHit.SlowWeapons ->
+                                        (attackRate ?: weaponSpeeds.actual(source)) >= 5
+                                }
+                        }
                         onEvent<PlayerSpecialAttackCheck>(type.id) {
                             if (weapon.isAnyType(objs.dinhs_bulwark, objs.dinhs_blazing_bulwark)) {
                                 val source = regions.normalizeCoords(target.coords)

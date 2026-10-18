@@ -15,6 +15,7 @@ import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
+import org.rsmod.game.hit.HitType
 import org.rsmod.game.proj.ProjAnim
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.proj.ProjAnimType
@@ -28,6 +29,13 @@ constructor(
     private val weapons: SpecialAttackWeapons,
     private val manager: PlayerAttackManager,
 ) {
+    /** @see [PlayerAttackManager.alwaysMaxHit] */
+    public fun alwaysMaxHit(
+        source: ProtectedAccess,
+        target: PathingEntity,
+        style: HitType,
+    ): Boolean = manager.alwaysMaxHit(source.player, target, style)
+
     public fun hasSpecialEnergy(source: ProtectedAccess, energyInHundreds: Int): Boolean {
         return energy.hasSpecialEnergy(source.player, energyInHundreds)
     }

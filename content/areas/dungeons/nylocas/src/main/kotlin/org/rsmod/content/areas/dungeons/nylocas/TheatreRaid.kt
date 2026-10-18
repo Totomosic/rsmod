@@ -3,11 +3,14 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.stats
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.stat.statAdd
+import org.rsmod.api.player.stat.statSub
 import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
@@ -108,6 +111,13 @@ constructor(
         }
         val raid = Raid(region, members, options)
         raids[region.uid] = raid
+        if (options.startingHitpoints250) {
+            for (member in members) {
+                val delta = 250 - member.hitpoints
+                if (delta >= 0) member.statAdd(stats.hitpoints, delta, 0)
+                else member.statSub(stats.hitpoints, -delta, 0)
+            }
+        }
         sync(raid)
         for (member in members) {
             member.mes(

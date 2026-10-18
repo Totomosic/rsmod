@@ -29,6 +29,7 @@ import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.freeze.isFrozen
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.npc.events.NpcHitEvents
@@ -67,6 +68,7 @@ import org.rsmod.api.weapons.WeaponModule
 import org.rsmod.api.weapons.WeaponRegistry
 import org.rsmod.api.weapons.WeaponRepository
 import org.rsmod.api.weapons.attack
+import org.rsmod.content.areas.dungeons.nylocas.NyloMaxHit
 import org.rsmod.content.areas.dungeons.nylocas.NylocasBehaviour
 import org.rsmod.content.areas.dungeons.nylocas.NylocasDeaths
 import org.rsmod.content.areas.dungeons.nylocas.NylocasEncounter
@@ -76,6 +78,8 @@ import org.rsmod.content.areas.dungeons.nylocas.NylocasSize
 import org.rsmod.content.areas.dungeons.nylocas.NylocasSlot
 import org.rsmod.content.areas.dungeons.nylocas.NylocasSpawn
 import org.rsmod.content.areas.dungeons.nylocas.NylocasStyle
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
+import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
 import org.rsmod.content.areas.dungeons.nylocas.nylocas_npcs
 import org.rsmod.content.areas.dungeons.nylocas.nylocas_spots
 import org.rsmod.content.other.special.attacks.melee.DinhsBulwarkSpecialAttack
@@ -101,6 +105,176 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
 class NylocasDamageTest {
+    @Test
+    fun GameTestState
+        .`max hit mode applies to each scythe splat and matching chin splash victim`() =
+        runDamageTest { deps, room ->
+            deps.raid.start(player, TheatreRaidOptions(nyloMaxHit = NyloMaxHit.AllWeapons))
+            val big = spawnNylo(deps, room, NylocasStyle.Melee, NylocasSize.Big)
+            player.righthand = InvObj(objs.scythe_of_vitur)
+            val maxHit =
+                deps.attacks.calculateMeleeMaxHit(
+                    player,
+                    big,
+                    MeleeAttackType.Crush,
+                    MeleeAttackStyle.Accurate,
+                    1.0,
+                )
+            random.next = 0
+            player.withProtectedAccess {
+                val weapon = checkNotNull(deps.weapons.getMelee(player.righthand))
+                weapon.attack(this, big, meleeAttack())
+            }
+            assertEquals(listOf(maxHit, maxHit / 2), big.pendingHits().map { it.damage })
+            deps.npcRepo.del(big, Int.MAX_VALUE)
+            val targets = mixedGroup(deps, room)
+            random.next = 9_999
+            throwChin(deps, targets.getValue(NylocasStyle.Magic))
+            val ranged = targets.getValue(NylocasStyle.Ranged)
+            // Shared accuracy misses on the wrong-style primary; the matching victim still maxes.
+            val rangedMax =
+                deps.attacks.calculateRangedMaxHit(
+                    player,
+                    ranged,
+                    RangedAttackType.Heavy,
+                    RangedAttackStyle.Rapid,
+                    1.0,
+                    0,
+                )
+            assertEquals(rangedMax, ranged.pendingHits().single().damage)
+            for (style in listOf(NylocasStyle.Melee, NylocasStyle.Magic)) {
+                assertEquals(0, targets.getValue(style).pendingHits().single().damage)
+            }
+        }
+
+    @Test
+    fun GameTestState
+        .`all weapons max hit correct styles without bypassing nulls or other raids`() =
+        runDamageTest { deps, room ->
+            deps.raid.start(player, TheatreRaidOptions(nyloMaxHit = NyloMaxHit.AllWeapons))
+            for (style in NylocasStyle.entries) {
+                val npc = spawnNylo(deps, room, style)
+                random.next = 9_999
+                when (style) {
+                    NylocasStyle.Melee -> {
+                        assertTrue(
+                            deps.attacks.rollMeleeAccuracy(player, npc, null, null, null, 1.0)
+                        )
+                        random.next = 0
+                        assertEquals(
+                            deps.attacks.calculateMeleeMaxHit(player, npc, null, null, 1.0),
+                            deps.attacks.rollMeleeMaxHit(player, npc, null, null, 1.0),
+                        )
+                    }
+                    NylocasStyle.Ranged -> {
+                        assertTrue(
+                            deps.attacks.rollRangedAccuracy(player, npc, null, null, null, 1.0)
+                        )
+                        random.next = 0
+                        assertEquals(
+                            deps.attacks.calculateRangedMaxHit(player, npc, null, null, 1.0, 0),
+                            deps.attacks.rollRangedMaxHit(player, npc, null, null, 1.0, 0),
+                        )
+                    }
+                    NylocasStyle.Magic -> {
+                        assertTrue(deps.attacks.rollStaffAccuracy(player, npc, null, 1.0))
+                        random.next = 0
+                        assertEquals(
+                            deps.attacks.calculateStaffMaxHit(player, npc, 30, 1.0),
+                            deps.attacks.rollStaffMaxHit(player, npc, 30, 1.0),
+                        )
+                        assertEquals(
+                            30,
+                            deps.attacks.rollSpellMaxHit(
+                                player,
+                                npc,
+                                objs.spell_ice_barrage,
+                                Spellbook.Ancients,
+                                30,
+                                5,
+                                false,
+                            ),
+                        )
+                    }
+                }
+                val wrong = if (style == NylocasStyle.Melee) HitType.Ranged else HitType.Melee
+                assertFalse(deps.attacks.canDamage(player, npc, wrong))
+                val correct =
+                    when (style) {
+                        NylocasStyle.Melee -> HitType.Melee
+                        NylocasStyle.Ranged -> HitType.Ranged
+                        NylocasStyle.Magic -> HitType.Magic
+                    }
+                assertFalse(deps.attacks.alwaysMaxHit(player, npc, correct))
+            }
+            val otherRoom = createRegion(NylocasRoom.template)
+            val other = spawnNylo(deps, otherRoom, NylocasStyle.Melee)
+            assertFalse(deps.attacks.alwaysMaxHit(player, other, HitType.Melee))
+            val outsider = registerPlayer(coords = player.coords)
+            val fresh = spawnNylo(deps, room, NylocasStyle.Melee)
+            assertFalse(deps.attacks.alwaysMaxHit(outsider, fresh, HitType.Melee))
+        }
+
+    @Test
+    fun GameTestState
+        .`slow max hits use five tick boundary and rapid speed with spells at cast speed`() =
+        runDamageTest { deps, room ->
+            deps.raid.start(player, TheatreRaidOptions(nyloMaxHit = NyloMaxHit.SlowWeapons))
+            val ranged = spawnNylo(deps, room, NylocasStyle.Ranged)
+            // Seercull: five ticks on Accurate, four on Rapid.
+            player.righthand = InvObj(findObjType { it.id == 6724 }.single())
+            VarPlayerIntMapSetter.set(player, varps.com_mode, 0)
+            assertTrue(deps.attacks.alwaysMaxHit(player, ranged, HitType.Ranged))
+            random.next = 0
+            assertEquals(40, deps.attacks.rollDamage(player, ranged, HitType.Ranged, 40))
+            VarPlayerIntMapSetter.set(player, varps.com_mode, 1)
+            assertFalse(deps.attacks.alwaysMaxHit(player, ranged, HitType.Ranged))
+            random.next = 0
+            assertEquals(1, deps.attacks.rollDamage(player, ranged, HitType.Ranged, 40))
+            // Godswords remain eligible at six ticks.
+            val melee = spawnNylo(deps, room, NylocasStyle.Melee)
+            player.righthand = InvObj(findObjType { it.id == 11802 }.single())
+            assertTrue(deps.attacks.alwaysMaxHit(player, melee, HitType.Melee))
+            // Cast speed governs spell damage even with a faster weapon equipped.
+            val magic = spawnNylo(deps, room, NylocasStyle.Magic)
+            player.righthand = InvObj(objs.black_chinchompa)
+            assertFalse(deps.attacks.alwaysMaxHit(player, magic, HitType.Magic))
+            assertTrue(
+                deps.attacks.rollSpellAccuracy(
+                    player,
+                    magic,
+                    objs.spell_ice_barrage,
+                    Spellbook.Ancients,
+                    false,
+                )
+            )
+            random.next = 0
+            assertEquals(
+                30,
+                deps.attacks.rollSpellMaxHit(
+                    player,
+                    magic,
+                    objs.spell_ice_barrage,
+                    Spellbook.Ancients,
+                    30,
+                    5,
+                    false,
+                ),
+            )
+            assertEquals(
+                0,
+                deps.attacks.rollSpellMaxHit(
+                    player,
+                    magic,
+                    objs.spell_ice_barrage,
+                    Spellbook.Ancients,
+                    30,
+                    4,
+                    false,
+                ),
+            )
+        }
+
     @Test
     fun GameTestState
         .`every thrall style attempts every nylo style and wrong styles land zero without nulling`() =
@@ -686,6 +860,7 @@ class NylocasDamageTest {
     class Dependencies
     @Inject
     constructor(
+        val raid: TheatreRaid,
         val behaviour: NylocasBehaviour,
         val npcRepo: NpcRepository,
         val npcs: NpcList,
