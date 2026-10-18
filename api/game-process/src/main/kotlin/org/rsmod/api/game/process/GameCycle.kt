@@ -50,6 +50,7 @@ constructor(
         playerInput.process()
         playerRouteRequest.process()
         npcMain.process()
+        eventBus.publish(GameLifecycle.NpcsProcessed)
         controllerMain.process()
         playerMain.process()
         playerLogout.process()

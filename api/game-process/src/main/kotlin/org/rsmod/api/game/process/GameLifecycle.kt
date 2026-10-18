@@ -7,6 +7,9 @@ public sealed class GameLifecycle : UnboundEvent {
 
     public data object StartCycle : GameLifecycle()
 
+    /** NPC queues and movement have completed; player main processing has not started. */
+    public data object NpcsProcessed : GameLifecycle()
+
     public data object LateCycle : GameLifecycle()
 
     public data object EndCycle : GameLifecycle()

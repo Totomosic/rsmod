@@ -9,6 +9,8 @@ import org.rsmod.api.config.refs.npcs
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.death.plugin.NpcDeathScript
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.hit.plugin.NpcHitScript
+import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.npc.queueDeath
 import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.repo.npc.NpcRepository
@@ -18,8 +20,12 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.npc.NpcMode
+import org.rsmod.game.hit.HitType
+import org.rsmod.game.movement.MoveRestrict
+import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.seq.EntitySeq
 import org.rsmod.game.type.npc.NpcTypeList
+import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneGrid
 import org.rsmod.map.zone.ZoneKey
 
@@ -34,6 +40,66 @@ class NylocasDeathsTest {
         val clock: MapClock,
         val zoneUpdates: ZoneUpdateMap,
     )
+
+    @ParameterizedTest
+    @CsvSource(
+        "Small, false, false, 2",
+        "Small, false, true, 1",
+        "Small, true, false, 3",
+        "Small, true, true, 2",
+        "Big, false, false, 6",
+        "Big, false, true, 5",
+        "Big, true, false, 7",
+        "Big, true, true, 6",
+    )
+    fun `extra hitsplat removes a killed nylo exactly one tick sooner`(
+        size: NylocasSize,
+        moving: Boolean,
+        overkill: Boolean,
+        removalDelay: Int,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NpcHitScript::class,
+            NylocasDeaths::class,
+        ) { deps ->
+            player.telejump(CoordGrid(512, 512, 3))
+            val type = nylocas_npcs.incoming(size, NylocasStyle.Melee)
+            val npc = Npc(deps.npcTypes[type], player.coords.translateX(2))
+            npc.mode = NpcMode.None
+            npc.setHunt(0)
+            npc.aiTimer(0)
+            npc.moveRestrict = MoveRestrict.Normal
+            npc.defaultMoveSpeed = MoveSpeed.Walk
+            npc.collisionSize = 1
+            for (x in 0..7) allocZoneCollision(npc.coords.translateX(x))
+            deps.npcRepo.add(npc, Int.MAX_VALUE)
+            npc.respawns = false
+            advance(ticks = 2)
+            if (moving) {
+                npc.walk(npc.coords.translateX(5))
+                advance()
+                assertTrue(npc.hasMovedThisCycle)
+            }
+            var impactCycle = -1
+            var removalCycle = -1
+            val impacts = mutableListOf<Int>()
+            deps.events.subscribeKeyed(NpcHitEvents.Impact::class.java, type.id.toLong()) {
+                if (impactCycle == -1) impactCycle = deps.clock.cycle
+                impacts += hit.damage
+            }
+            deps.events.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (!npc.isSlotAssigned && removalCycle == -1) removalCycle = deps.clock.cycle - 1
+            }
+            val hp = npc.hitpoints
+            npc.queueHit(player, delay = 1, HitType.Melee, damage = hp)
+            if (overkill) npc.queueHit(player, delay = 1, HitType.Melee, damage = 1)
+            advanceUntil(predicate = { !npc.isSlotAssigned }, timeoutTicks = 12)
+            assertEquals(if (overkill) listOf(hp, 0) else listOf(hp), impacts)
+            assertEquals(removalDelay, removalCycle - impactCycle)
+        }
 
     @ParameterizedTest
     @CsvSource(

@@ -48,7 +48,12 @@ constructor(
                 delay(1)
             }
         }
-        onEvent<GameLifecycle.StartCycle> { processEncounters() }
+        onEvent<GameLifecycle.StartCycle> {
+            behaviour.processLifetimes()
+            boss.process()
+        }
+        // A corpse removed by this tick's NPC processing frees its cap slot before admission.
+        onEvent<GameLifecycle.NpcsProcessed> { processEncounters() }
         onEvent<GameLifecycle.EndCycle> { checkCleanup() }
         behaviour.register(this)
         boss.register(this)
@@ -118,8 +123,6 @@ constructor(
     }
 
     private fun processEncounters() {
-        behaviour.processLifetimes()
-        boss.process()
         val iterator = encounters.values.iterator()
         while (iterator.hasNext()) {
             val encounter = iterator.next()

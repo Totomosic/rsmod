@@ -31,6 +31,7 @@ import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.freeze.isFrozen
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.player.clearInteractionRoute
@@ -80,19 +81,25 @@ import org.rsmod.content.areas.dungeons.nylocas.NylocasSpawn
 import org.rsmod.content.areas.dungeons.nylocas.NylocasStyle
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaid
 import org.rsmod.content.areas.dungeons.nylocas.TheatreRaidOptions
+import org.rsmod.content.areas.dungeons.nylocas.nylocas_locs
 import org.rsmod.content.areas.dungeons.nylocas.nylocas_npcs
 import org.rsmod.content.areas.dungeons.nylocas.nylocas_spots
+import org.rsmod.content.areas.dungeons.nylocas.tob_varbits
 import org.rsmod.content.other.special.attacks.melee.DinhsBulwarkSpecialAttack
+import org.rsmod.content.other.special.weapons.configs.special_weapon_objs
 import org.rsmod.content.other.special.weapons.melee.ScytheOfViturWeapons
+import org.rsmod.content.other.special.weapons.melee.SulphurBladesWeapons
 import org.rsmod.content.other.special.weapons.ranged.BlackChinchompaWeapons
 import org.rsmod.content.skills.magic.spell.attacks.ancient.AncientSpells
 import org.rsmod.content.skills.magic.utility.Thralls
 import org.rsmod.content.skills.magic.utility.thrall_components
+import org.rsmod.game.MapClock
 import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
+import org.rsmod.game.entity.npc.NpcStateEvents
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
@@ -105,6 +112,91 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
 class NylocasDamageTest {
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `wave 21 spell then melee overkill removes the melee target before wave 22`(
+        overkill: Boolean,
+        state: GameTestState,
+    ) =
+        state.runDamageTest(NylocasDeaths::class, TheatreRaid::class, entryBarrier = true) {
+            deps,
+            room ->
+            val barrier = placeMapLoc(room.normal[CoordGrid(3295, 4255)], nylocas_locs.barrier)
+            player.telejump(room.normal[CoordGrid(3295, 4256)])
+            advance()
+            deps.raid.start(
+                player,
+                TheatreRaidOptions(startingWave = 21, nyloMaxHit = NyloMaxHit.AllWeapons),
+            )
+            player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advanceUntil(predicate = { player.vars[tob_varbits.progress_value] == 21 })
+            val spawnCycle = deps.clock.cycle - 1
+            val mage = deps.npcs.single { it.coords == room.normal[NylocasSlot.WestNorth.source] }
+            // A surviving small from an earlier wave, already in melee range inside the room.
+            val melee =
+                spawnNylo(deps, room, NylocasStyle.Melee).apply {
+                    aiTimer(0)
+                    baseHitpointsLvl = NylocasSize.Small.hitpoints(1)
+                    hitpoints = baseHitpointsLvl
+                }
+            melee.telejump(room.normal[CoordGrid(3291, 4248)])
+            player.telejump(room.normal[CoordGrid(3290, 4248)])
+            // Retaining the melee body fills the cap at the wave 22 check.
+            repeat(17) { spawnNylo(deps, room, NylocasStyle.Melee).aiTimer(0) }
+            val attacks = mutableListOf<Pair<Int, Npc>>()
+            val impacts = mutableListOf<Pair<Int, Int>>()
+            var removalCycle = -1
+            var nextWaveCycle = -1
+            var removedBeforeNextWave: Boolean? = null
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                attacks += deps.clock.cycle - spawnCycle to target
+            }
+            eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, melee.id.toLong()) {
+                if (npc === melee) impacts += deps.clock.cycle - spawnCycle to hit.damage
+            }
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                val age = deps.clock.cycle - 1 - spawnCycle
+                if (!melee.isSlotAssigned && removalCycle == -1) removalCycle = age
+            }
+            eventBus.subscribeUnbound(NpcStateEvents.Create::class.java) {
+                if (nextWaveCycle == -1) {
+                    nextWaveCycle = deps.clock.cycle - spawnCycle
+                    removedBeforeNextWave = !melee.isSlotAssigned
+                }
+            }
+            val spell = checkNotNull(deps.spells.getObjSpell(objs.spell_ice_blitz))
+            val hp = melee.hitpoints
+            player.withProtectedAccess {
+                delay(1)
+                assertTrue(player.distanceTo(mage) <= 10)
+                deps.combat.attack(this, mage, CombatAttack.Spell(null, spell, false))
+                assertEquals(player.currentMapClock + 5, player.actionDelay)
+            }
+            advance(ticks = 5)
+            assertTrue(deps.attacks.isAttackDelayed(player))
+            player.clearInteractionRoute()
+            player.withProtectedAccess {
+                delay(1)
+                assertFalse(deps.attacks.isAttackDelayed(player))
+                assertEquals(1, player.distanceTo(melee))
+                player.righthand =
+                    InvObj(
+                        if (overkill) special_weapon_objs.sulphur_blades else objs.scythe_of_vitur
+                    )
+                deps.combat.attack(this, melee, meleeAttack().copy(weapon = player.righthand))
+            }
+            advance(ticks = 7)
+            assertEquals(listOf(1, 6), attacks.map { it.first })
+            assertTrue(attacks[0].second === mage)
+            assertTrue(attacks[1].second === melee)
+            assertEquals(if (overkill) listOf(hp, 0) else listOf(hp), impacts.map { it.second })
+            assertEquals(if (overkill) 8 else 9, removalCycle)
+            assertEquals(if (overkill) 8 else 12, nextWaveCycle)
+            assertEquals(true, removedBeforeNextWave)
+        }
+
     @Test
     fun GameTestState
         .`max hit mode applies to each scythe splat and matching chin splash victim`() =
@@ -824,6 +916,7 @@ class NylocasDamageTest {
 
     private fun GameTestState.runDamageTest(
         vararg extraScripts: KClass<out PluginScript>,
+        entryBarrier: Boolean = false,
         testBody: GameTestScope.(Dependencies, Region) -> Unit,
     ) =
         runInjectedGameTest(
@@ -843,8 +936,10 @@ class NylocasDamageTest {
         ) { deps ->
             with(deps.chins) { deps.weaponRepo.register(deps.weaponManager) }
             with(deps.scythe) { deps.weaponRepo.register(deps.weaponManager) }
+            with(deps.sulphurBlades) { deps.weaponRepo.register(deps.weaponManager) }
             with(deps.bulwark) { deps.specialRepo.register(deps.specialManager) }
             with(deps.ancients) { deps.spellRepo.register(deps.spellManager) }
+            if (entryBarrier) placeMapLoc(CoordGrid(3295, 4255), nylocas_locs.barrier)
             val room = createRegion(NylocasRoom.template)
             player.telejump(room.normal[CoordGrid(3295, 4244)])
             for (stat in
@@ -857,10 +952,12 @@ class NylocasDamageTest {
             testBody(deps, room)
         }
 
-    class Dependencies
+    internal class Dependencies
     @Inject
     constructor(
         val raid: TheatreRaid,
+        val clock: MapClock,
+        internal val combat: PvNCombat,
         val behaviour: NylocasBehaviour,
         val npcRepo: NpcRepository,
         val npcs: NpcList,
@@ -871,6 +968,7 @@ class NylocasDamageTest {
         val regions: RegionRegistry,
         val chins: BlackChinchompaWeapons,
         val scythe: ScytheOfViturWeapons,
+        val sulphurBlades: SulphurBladesWeapons,
         val weapons: WeaponRegistry,
         val weaponRepo: WeaponRepository,
         val weaponManager: WeaponAttackManager,
