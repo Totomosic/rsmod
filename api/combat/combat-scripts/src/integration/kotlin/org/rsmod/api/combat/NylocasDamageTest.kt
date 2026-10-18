@@ -20,8 +20,12 @@ import org.rsmod.api.combat.commons.styles.RangedAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.commons.types.RangedAttackType
 import org.rsmod.api.combat.manager.PlayerAttackManager
+import org.rsmod.api.combat.player.specialAttackType
+import org.rsmod.api.combat.scripts.PvNCombatScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
+import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
+import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.areas
 import org.rsmod.api.config.refs.components
@@ -43,6 +47,7 @@ import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackManager
 import org.rsmod.api.specials.SpecialAttackRegistry
 import org.rsmod.api.specials.SpecialAttackRepository
+import org.rsmod.api.specials.SpecialAttackType
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.spells.attack.SpellAttackManager
@@ -112,6 +117,74 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
 class NylocasDamageTest {
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `wave 25 west fighting big receives the bulwark special as it enters`(
+        blazing: Boolean,
+        state: GameTestState,
+    ) =
+        state.runDamageTest(
+            TheatreRaid::class,
+            PvNCombatScript::class,
+            WeaponAttackTypesScript::class,
+            entryBarrier = true,
+        ) { deps, room ->
+            // The game-test area index starts empty; mirror the room's multi-combat area.
+            for (x in 3290..3301) for (z in 4243..4254) {
+                deps.areas.registerAll(
+                    CoordGrid(x, z),
+                    listOf(areas.multiway.id.toShort()).iterator(),
+                )
+            }
+            val barrier = placeMapLoc(room.normal[CoordGrid(3295, 4255)], nylocas_locs.barrier)
+            player.telejump(room.normal[CoordGrid(3295, 4256)])
+            advance()
+            deps.raid.start(
+                player,
+                TheatreRaidOptions(startingWave = 25, nyloMaxHit = NyloMaxHit.AllWeapons),
+            )
+            player.opLoc1(barrier)
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advanceUntil(predicate = { player.vars[tob_varbits.progress_value] == 25 })
+            val target = deps.npcs.single { it.coords == room.normal[NylocasSlot.WestSouth.source] }
+            player.telejump(room.normal[CoordGrid(3291, 4249)])
+            // Click just before the 2x2 footprint first reaches melee range from the room.
+            advanceUntil(predicate = { target.coords == room.normal[CoordGrid(3288, 4248)] })
+            player.righthand =
+                InvObj(if (blazing) objs.dinhs_blazing_bulwark else objs.dinhs_bulwark)
+            VarPlayerIntMapSetter.set(player, varps.sa_energy, 1000)
+            player.withProtectedAccess { specialAttackType = SpecialAttackType.Weapon }
+            val delayBefore = player.actionDelay
+            var hitsWhenSpent: List<Hit>? = null
+            var targetWhenSpent: CoordGrid? = null
+            val damage = mutableListOf<Int>()
+            for (type in listOf(target.id, nylocas_npcs.big_fighting_melee.id)) {
+                eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, type.toLong()) {
+                    if (npc === target) damage += hit.damage
+                }
+            }
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (hitsWhenSpent == null && player.vars[varps.sa_energy] == 500) {
+                    hitsWhenSpent = target.pendingHits()
+                    targetWhenSpent = deps.regions.normalizeCoords(target.coords)
+                }
+            }
+            player.opNpc2(target)
+            advance()
+            assertEquals(room.normal[CoordGrid(3289, 4248)], target.coords)
+            assertEquals(1000, player.vars[varps.sa_energy])
+            assertEquals(1, player.vars[varps.sa_attack])
+            assertEquals(delayBefore, player.actionDelay)
+            assertTrue(target.pendingHits().isEmpty())
+            advance(ticks = 15)
+            val hits = checkNotNull(hitsWhenSpent) { "Special never spent energy" }
+            assertEquals(CoordGrid(3290, 4248), targetWhenSpent)
+            assertEquals(2, hits.size)
+            assertTrue(hits.all { it.damage > 0 })
+            assertTrue(damage.any { it > 0 })
+        }
+
     @ParameterizedTest
     @CsvSource("false", "true")
     fun `wave 21 spell then melee overkill waits for both bodies before wave 22`(
@@ -1001,6 +1074,7 @@ class NylocasDamageTest {
             install(org.rsmod.api.specials.SpecialAttackModule())
             bind(SpellAttackRegistry::class.java).`in`(Scopes.SINGLETON)
             bind(AttackStyles::class.java).`in`(Scopes.SINGLETON)
+            bind(AttackTypes::class.java).`in`(Scopes.SINGLETON)
             bind(ComboRuneRepository::class.java).`in`(Scopes.SINGLETON)
             bind(CompactRuneRepository::class.java).`in`(Scopes.SINGLETON)
             bind(FakeRuneRepository::class.java).`in`(Scopes.SINGLETON)
