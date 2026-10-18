@@ -60,9 +60,15 @@ import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.content.skills.magic.spell.attacks.SpellAttacksModule
+import org.rsmod.content.skills.magic.utility.DeathCharge
 import org.rsmod.content.skills.magic.utility.SpellbookSwap
+import org.rsmod.content.skills.magic.utility.Thralls
+import org.rsmod.content.skills.magic.utility.death_charge_components
+import org.rsmod.content.skills.magic.utility.death_charge_varbits
 import org.rsmod.content.skills.magic.utility.spellbook_swap_components
 import org.rsmod.content.skills.magic.utility.spellbook_swap_varps
+import org.rsmod.content.skills.magic.utility.thrall_components
+import org.rsmod.content.skills.magic.utility.thrall_varbits
 import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
@@ -83,6 +89,88 @@ import org.rsmod.routefinder.flag.CollisionFlag
 // LOS tests temporarily change shared collision flags; keep casts in this class sequential.
 @Execution(ExecutionMode.SAME_THREAD)
 class AncientSpellsTest {
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
+    fun `utility casts preserve ongoing attacks and their timing`(
+        variant: Int,
+        state: GameTestState,
+    ) =
+        state.runAncientTest(
+            PvNCombatScript::class,
+            WeaponAttackTypesScript::class,
+            DeathCharge::class,
+            Thralls::class,
+        ) {
+            val npc = spawnTarget()
+            player.placeAt(npc.coords.translateZ(1))
+            prepareUtilityCast(variant)
+            val owner = player
+            val attacks = mutableListOf<Int>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner && target === npc) attacks += mapClock.cycle
+            }
+            advance(ticks = 25)
+            player.opNpc2(npc)
+            advance(ticks = 1)
+            val firstAttack = attacks.single()
+            val nextAttack = player.actionDelay
+            castUtility(variant)
+            assertEquals(nextAttack, player.actionDelay)
+            assertNotNull(player.interaction)
+            advance(ticks = 8)
+            assertEquals(listOf(firstAttack, firstAttack + 4, firstAttack + 8), attacks)
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
+    fun `utility casts preserve attacks clicked earlier in the casting tick`(
+        variant: Int,
+        state: GameTestState,
+    ) =
+        state.runAncientTest(
+            PvNCombatScript::class,
+            WeaponAttackTypesScript::class,
+            DeathCharge::class,
+            Thralls::class,
+        ) {
+            val npc = spawnTarget()
+            prepareUtilityCast(variant)
+            val owner = player
+            val attacks = mutableListOf<Int>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner && target === npc) attacks += mapClock.cycle
+            }
+            advance(ticks = 25)
+            player.opNpc2(npc)
+            castUtility(variant)
+            assertNotNull(player.interaction)
+            advance(ticks = 10)
+            assertTrue(attacks.isNotEmpty())
+        }
+
+    private fun GameTestScope.prepareUtilityCast(variant: Int) {
+        VarPlayerIntMapSetter.set(player, varbits.spellbook, 3)
+        if (variant >= 4) VarPlayerIntMapSetter.set(player, spellbook_swap_varps.active, 1)
+        player.setCurrentLevel(stats.prayer, 99)
+        player.inv[1] = InvObj(checkNotNull(objTypes[25818])) // Book of the dead.
+        player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+    }
+
+    private fun GameTestScope.castUtility(variant: Int) {
+        val buttons =
+            listOf(
+                death_charge_components.cast,
+                thrall_components.ghost,
+                thrall_components.skeleton,
+                thrall_components.zombie,
+            )
+        player.ifButton(buttons[variant % 4])
+        advance(ticks = 1)
+        val active = if (variant % 4 == 0) death_charge_varbits.active else thrall_varbits.active
+        assertEquals(1, player.vars[active])
+        assertEquals(if (variant >= 4) 2 else 3, player.vars[varbits.spellbook])
+    }
+
     @Test
     fun GameTestState.`ongoing combat pauses during SBS and continues without another click`() =
         runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {

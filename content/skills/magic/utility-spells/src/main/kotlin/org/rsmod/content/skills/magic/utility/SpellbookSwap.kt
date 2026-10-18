@@ -104,8 +104,7 @@ constructor(
         clearSoftTimer(spellbook_swap_timers.expire)
         if (swapActive == 0) return
         swapActive = 0
-        // Preserve the spell coroutine and its pending effects, even when the player is delayed.
-        clearInteraction()
+        // Returning books must preserve combat, movement, and other pending actions.
         clearAutocast()
         spellbook = Spellbook.Lunars
     }

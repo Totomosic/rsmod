@@ -5,6 +5,8 @@ import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.combat.manager.MagicRuneManager
 import org.rsmod.api.config.refs.components
@@ -45,6 +47,41 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class SpellbookSwapTest {
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
+    fun `utility casts preserve pending movement and noncombat actions`(
+        variant: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(Thralls::class, NpcAction::class) {
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+            if (variant >= 4) player.swapActive = 1
+            player.setCurrentLevel(stats.prayer, 99)
+            player.inv[1] = InvObj(checkNotNull(objTypes[25818])) // Book of the dead.
+            val npc = spawnNpc(player.coords.translateX(6), actionTarget)
+            allocZoneCollision(player.coords)
+            advance(ticks = 1)
+            val start = player.coords
+            player.opNpc1(npc)
+            val buttons =
+                listOf(
+                    death_charge_components.cast,
+                    thrall_components.ghost,
+                    thrall_components.skeleton,
+                    thrall_components.zombie,
+                )
+            player.ifButton(buttons[variant % 4])
+            advance(ticks = 1)
+            val active =
+                if (variant % 4 == 0) death_charge_varbits.active else thrall_varbits.active
+            assertEquals(1, player.vars[active])
+            assertEquals(if (variant >= 4) 2 else 3, player.vars[varbits.spellbook])
+            assertNotNull(player.interaction)
+            assertNotEquals(start, player.coords)
+            advanceUntil({ player.interaction == null }, timeoutTicks = 10)
+            assertMessageSent("Action completed.")
+        }
+
     @Test
     fun GameTestState.`movement clicked before SBS in the same tick resumes after the stall`() =
         runSwapTest {
