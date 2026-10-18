@@ -77,9 +77,11 @@ class NylocasOccupancyTest {
                 }
                 advance()
             }
-            assertEquals(31, player.vars[tob_varbits.progress_value])
+            assertEquals(1, player.vars[tob_varbits.progress_type])
+            assertEquals(1000, player.vars[tob_varbits.progress_value])
             assertEquals(0, deps.npcs.count { it.id in 8342..8353 })
             assertEquals(4, deps.npcs.count { it.id == 8358 })
+            assertEquals(1, deps.npcs.count { it.id == 8354 })
         }
 
     @Test

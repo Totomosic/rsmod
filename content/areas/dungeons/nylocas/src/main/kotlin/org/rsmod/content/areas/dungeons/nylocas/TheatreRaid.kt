@@ -151,6 +151,27 @@ constructor(
         sync(raid)
     }
 
+    fun bossHealth(region: Region, hitpoints: Int, maximum: Int) {
+        val raid = raids[region.uid] ?: return
+        raid.progressType = 1
+        // Native boss-health protocol is a fraction out of 1000, also read by Blert.
+        raid.progressValue = hitpoints * 1000 / maximum
+        raid.progressMax = 1000
+        sync(raid)
+    }
+
+    fun completeRoom(region: Region, ticks: Int) {
+        val raid = raids[region.uid] ?: return
+        raid.progressType = 0
+        raid.progressValue = 0
+        raid.progressMax = 0
+        val tenths = ticks * 6
+        val time =
+            "${tenths / 600}:${(tenths / 10 % 60).toString().padStart(2, '0')}.${tenths % 10}"
+        raid.members.forEach { it.mes("Wave 'The Nylocas' ($time) complete!") }
+        sync(raid)
+    }
+
     private fun process() {
         lobbies.values.removeAll {
             it.region.slot == Region.INVALID_SLOT ||
@@ -205,7 +226,7 @@ constructor(
             }
             viewer.set(tob_varbits.progress_type, raid.progressType)
             viewer.set(tob_varbits.progress_value, raid.progressValue)
-            viewer.set(tob_varbits.progress_max, 31)
+            viewer.set(tob_varbits.progress_max, raid.progressMax)
             if (!viewer.ui.containsOverlay(tob_interfaces.hud)) {
                 viewer.ifOpenOverlay(
                     tob_interfaces.hud,
@@ -249,6 +270,7 @@ constructor(
         var names: List<String>? = null,
         var progressType: Int = 0,
         var progressValue: Int = 0,
+        var progressMax: Int = 31,
     ) {
         // Keep encounter scaling stable if a member disconnects or leaves the instance.
         val teamSize: Int = members.size

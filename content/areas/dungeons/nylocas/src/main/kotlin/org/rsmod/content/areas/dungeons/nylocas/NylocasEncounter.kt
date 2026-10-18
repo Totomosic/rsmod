@@ -33,6 +33,7 @@ constructor(
     private val raid: TheatreRaid,
     private val waves: NylocasWaveTable,
     private val behaviour: NylocasBehaviour,
+    private val boss: NylocasBoss,
     private val eventBus: EventBus,
 ) : PluginScript() {
     private val encounters = mutableMapOf<Int, Encounter>()
@@ -48,7 +49,9 @@ constructor(
             }
         }
         onEvent<GameLifecycle.StartCycle> { processEncounters() }
+        onEvent<GameLifecycle.EndCycle> { checkCleanup() }
         behaviour.register(this)
+        boss.register(this)
     }
 
     private suspend fun ProtectedAccess.pass(barrier: BoundLocInfo) {
@@ -78,6 +81,7 @@ constructor(
                     waveCycle = clock + waves.waves.first().ticksAfterPrevious,
                     teamSize = raid.teamSize(region),
                     waveIndex = raid.options(region).startingWave - 1,
+                    startCycle = clock.cycle,
                 )
             }
             enterWaitingPlayers(region)
@@ -115,12 +119,18 @@ constructor(
 
     private fun processEncounters() {
         behaviour.processLifetimes()
+        boss.process()
         val iterator = encounters.values.iterator()
         while (iterator.hasNext()) {
             val encounter = iterator.next()
             if (encounter.region.slot == Region.INVALID_SLOT) {
                 iterator.remove()
                 continue
+            }
+            val bossCycle = encounter.bossCycle
+            if (bossCycle != null && clock >= bossCycle && !encounter.bossSpawned) {
+                boss.spawn(encounter.region, encounter.teamSize, encounter.startCycle)
+                encounter.bossSpawned = true
             }
             if (
                 encounter.waveIndex >= waves.waves.size ||
@@ -154,6 +164,20 @@ constructor(
         }
     }
 
+    private fun checkCleanup() {
+        for (encounter in encounters.values) {
+            if (encounter.waveIndex < 31 || encounter.bossCycle != null) continue
+            if (encounter.region.slot == Region.INVALID_SLOT) continue
+            // Dying bigs still split; cleanup starts only after the final body's removal.
+            if (npcs.any { it.id in 8342..8353 && regions[it.coords]?.uid == encounter.region.uid })
+                continue
+            val phase = Math.floorMod(encounter.startCycle, 4)
+            // EndCycle follows MapClock.tick(); deaths ran on the preceding cycle value.
+            val cleanupCycle = clock.cycle - 1
+            encounter.bossCycle = cleanupCycle + 16 + Math.floorMod(phase - cleanupCycle, 4)
+        }
+    }
+
     private fun spawn(encounter: Encounter, slot: NylocasSlot, spawn: NylocasSpawn) {
         val type = nylocas_npcs.incoming(spawn.size, spawn.style)
         val npc = Npc(npcTypes[type], encounter.region.normal[spawn.source(slot)])
@@ -178,5 +202,8 @@ constructor(
         var waveCycle: Int,
         val teamSize: Int,
         var waveIndex: Int = 0,
+        val startCycle: Int,
+        var bossCycle: Int? = null,
+        var bossSpawned: Boolean = false,
     )
 }

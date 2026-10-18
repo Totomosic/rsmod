@@ -15,6 +15,7 @@ dependencies {
     integrationImplementation(projects.api.gameProcess)
     integrationImplementation(projects.api.combat.combatWeapon)
     integrationImplementation(projects.api.combat.combatCommons)
+    integrationImplementation(projects.api.combat.combatFormulas)
     integrationImplementation(projects.api.combat.combatManager)
     integrationImplementation(projects.api.areaChecker)
     integrationImplementation(libs.openrs2.cache)

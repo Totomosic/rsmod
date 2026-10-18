@@ -16,9 +16,22 @@ object nylocas_locs : LocReferences() {
 
 object nylocas_queues : QueueReferences() {
     val enter = find("nylocas_enter")
+    val hit = find("hit")
 }
 
 object nylocas_npcs : NpcReferences() {
+    val boss_spawning = find("nylocas_boss_spawning")
+    val boss_melee = find("nylocas_boss_melee")
+    val boss_magic = find("nylocas_boss_magic")
+    val boss_ranged = find("nylocas_boss_ranged")
+
+    fun boss(style: NylocasStyle) =
+        when (style) {
+            NylocasStyle.Melee -> boss_melee
+            NylocasStyle.Ranged -> boss_ranged
+            NylocasStyle.Magic -> boss_magic
+        }
+
     val support = find("tob_nylocas_support")
     val small_magic = find("tob_nylocas_incoming_magic")
     val small_ranged = find("tob_nylocas_incoming_ranged")
@@ -52,6 +65,7 @@ object nylocas_npcs : NpcReferences() {
 }
 
 object nylocas_seqs : SeqReferences() {
+    val boss_spawn = find("top_spider_melee_spawn")
     val magic_attack = find("top_spider_magic_attack")
     val ranged_attack = find("top_spider_ranged_attack")
     val melee_attack = find("top_spider_melee_attack")
