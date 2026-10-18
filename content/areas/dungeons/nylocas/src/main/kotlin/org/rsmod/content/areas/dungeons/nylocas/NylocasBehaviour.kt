@@ -156,7 +156,7 @@ constructor(
             state.nullFeedbackCycles[playerId] = clock.cycle
             // Synth packets have no gain control. Mix two synchronized copies for a louder
             // cue; increasing loops would only repeat it for longer.
-            repeat(2) { check.source.soundSynth(NylocasSynths.cancelled) }
+            repeat(2) { check.source.soundSynth(NylocasSynths.nullWarning) }
             check.target.spotanim(nylocas_spots.shielded, slot = constants.spotanim_slot_combat)
         }
     }

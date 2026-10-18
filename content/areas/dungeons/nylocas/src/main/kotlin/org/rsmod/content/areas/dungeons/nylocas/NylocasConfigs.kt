@@ -124,9 +124,9 @@ object nylocas_spots : SpotanimReferences() {
 
 internal object NylocasSynths {
     val defend = SynthType(4020, "tob_nylocas_hit")
-    // Existing cache cancel_prayer sound, absent from this workspace's synth symbols.
+    // Native warning/error buzzer, absent from this workspace's synth symbols.
     // https://gist.github.com/Jire/d8db4e0964feb92c719b95cf4821ab2c
-    val cancelled = SynthType(2663, "cancel_prayer")
+    val nullWarning = SynthType(2394, "errorsound")
 }
 
 object tob_interfaces : InterfaceReferences() {

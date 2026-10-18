@@ -574,7 +574,7 @@ class NylocasDamageTest {
 
     @ParameterizedTest
     @CsvSource("Small", "Big")
-    fun `only subsequent nulled attacks play cancellation feedback`(
+    fun `only subsequent nulled attacks play the error warning sound`(
         size: NylocasSize,
         state: GameTestState,
     ) =
@@ -603,7 +603,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(List(2) { SynthSound(2663, 1, 0) }, client.filterIsInstance<SynthSound>())
+            assertEquals(List(2) { SynthSound(2394, 1, 0) }, client.filterIsInstance<SynthSound>())
             val orb = EntitySpotanim(npc.pendingSpotanims.single())
             assertEquals(1558, orb.id)
             assertEquals(constants.spotanim_slot_combat, orb.slot)
@@ -622,7 +622,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(List(2) { SynthSound(2663, 1, 0) }, client.filterIsInstance<SynthSound>())
+            assertEquals(List(2) { SynthSound(2394, 1, 0) }, client.filterIsInstance<SynthSound>())
             assertEquals(1558, EntitySpotanim(npc.pendingSpotanims.single()).id)
         }
 
@@ -697,7 +697,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             for (npc in targets.values) npc.pendingSpotanims.clear()
             bash(deps, primary)
-            assertEquals(4, client.countOf<SynthSound> { it.id == 2663 })
+            assertEquals(4, client.countOf<SynthSound> { it.id == 2394 })
             assertEquals(
                 1,
                 primary.pendingSpotanims.map { EntitySpotanim(it) }.count { it.id == 1558 },
