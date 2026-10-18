@@ -5,6 +5,7 @@ import jakarta.inject.Inject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.death.plugin.NpcDeathScript
 import org.rsmod.api.npc.queueDeath
@@ -101,6 +102,45 @@ class NylocasOccupancyTest {
             assertEquals(source.translate(-1, 0), big.coords)
             assertEquals(setOf(big.coords), occupied(deps, big.coords))
             assertEquals(0, deps.collision[source] and CollisionFlag.BLOCK_NPCS)
+        }
+
+    @ParameterizedTest
+    @EnumSource(NylocasStyle::class)
+    fun `a fighting big expands its reservation on entry and releases its full footprint`(
+        style: NylocasStyle,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            wave(pillar = null, style = style),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            val big = deps.npcs.single()
+            assertEquals(1, big.collisionSize)
+            assertEquals(setOf(big.coords), occupied(deps, big.coords))
+            enter(deps, room)
+            assertEquals(nylocas_npcs.fighting(NylocasSize.Big, style).id, big.visType.id)
+            assertEquals(2, big.collisionSize)
+            assertEquals(footprint(big.coords), occupied(deps, big.coords))
+
+            val entry = big.coords
+            val anchor = room.normal[CoordGrid(3295, 4248, 0)]
+            big.telejump(anchor)
+            assertTrue(occupied(deps, entry).isEmpty())
+            assertEquals(footprint(anchor), occupied(deps, anchor))
+            player.telejump(room.normal[CoordGrid(3301, 4250, 0)])
+            advance(ticks = 2)
+            assertNotEquals(anchor, big.coords)
+            assertEquals(footprint(big.coords), occupied(deps, big.coords))
+            for (tile in footprint(anchor) - footprint(big.coords)) {
+                assertEquals(0, deps.collision[tile] and CollisionFlag.BLOCK_NPCS)
+            }
+
+            val destination = big.coords
+            deps.npcRepo.del(big, Int.MAX_VALUE)
+            assertTrue(occupied(deps, destination).isEmpty())
         }
 
     @ParameterizedTest
@@ -262,6 +302,9 @@ class NylocasOccupancyTest {
         }
     }
 
+    private fun footprint(anchor: CoordGrid): Set<CoordGrid> =
+        (0..1).flatMap { x -> (0..1).map { z -> anchor.translate(x, z) } }.toSet()
+
     private fun GameTestScope.stationary(deps: Dependencies, room: Region, x: Int, z: Int): Npc =
         spawnNpc(room.normal[CoordGrid(x, z, 0)], deps.npcTypes[nylocas_npcs.small_melee]) {
             mode = NpcMode.None
@@ -280,12 +323,13 @@ class NylocasOccupancyTest {
     }
 
     private fun wave(
-        pillar: NylocasPillar = NylocasPillar.NorthEast,
+        pillar: NylocasPillar? = NylocasPillar.NorthEast,
         secondBig: Boolean = false,
+        style: NylocasStyle = NylocasStyle.Melee,
     ): AbstractModule =
         object : AbstractModule() {
             override fun configure() {
-                val spawn = NylocasSpawn(NylocasSize.Big, NylocasStyle.Melee, pillar)
+                val spawn = NylocasSpawn(NylocasSize.Big, style, pillar)
                 bind(NylocasWaveTable::class.java)
                     .toInstance(
                         NylocasWaveTable(

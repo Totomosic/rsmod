@@ -54,6 +54,107 @@ import org.rsmod.plugin.scripts.ScriptContext
 
 class SpellbookSwapTest {
     @ParameterizedTest
+    @ValueSource(ints = [0, 2, 10])
+    fun `mark of darkness leaves ready and pending attack cooldowns unchanged`(
+        delay: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(MarkOfDarkness::class) {
+            swap(3)
+            player.actionDelay = mapClock.cycle + delay
+            val nextAttack = player.actionDelay
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.ifButton(mark_of_darkness_components.cast)
+            advance()
+            assertEquals(nextAttack, player.actionDelay)
+            assertEquals(initialXp + 70, player.statMap.getXP(stats.magic))
+            assertEquals(Spellbook.Lunars.varValue, player.vars[varbits.spellbook])
+        }
+
+    @Test
+    fun GameTestState
+        .`mark of darkness casts without a target and returns from Arceuus to Lunar`() =
+        runSwapTest(MarkOfDarkness::class) {
+            swap(3)
+            assertEquals(Spellbook.Arceuus.varValue, player.vars[varbits.spellbook])
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.ifButton(mark_of_darkness_components.cast)
+            advance()
+            assertEquals(Spellbook.Lunars.varValue, player.vars[varbits.spellbook])
+            assertEquals(0, player.swapActive)
+            assertEquals(initialXp + 70, player.statMap.getXP(stats.magic))
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2])
+    fun `failed mark of darkness casts preserve the swap and consume no runes or XP`(
+        failure: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(MarkOfDarkness::class) {
+            swap(3)
+            when (failure) {
+                0 -> player.setCurrentLevel(stats.magic, 1)
+                1 -> player.inv[0] = null
+                2 ->
+                    VarPlayerIntMapSetter.set(
+                        player,
+                        varbits.spellbook,
+                        Spellbook.Standard.varValue,
+                    )
+            }
+            val book = player.vars[varbits.spellbook]
+            val inventory = player.inv.toList()
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.actionDelay = mapClock.cycle + 10
+            val nextAttack = player.actionDelay
+            player.ifButton(mark_of_darkness_components.cast)
+            advance()
+            assertEquals(nextAttack, player.actionDelay)
+            assertEquals(book, player.vars[varbits.spellbook])
+            assertEquals(1, player.swapActive)
+            assertEquals(inventory, player.inv.toList())
+            assertEquals(initialXp, player.statMap.getXP(stats.magic))
+        }
+
+    @Test
+    fun GameTestState.`mark of darkness consumes its rune requirements once without a swap`() =
+        runSwapTest(MarkOfDarkness::class) { deps ->
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+            player.inv[0] = null
+            val spell = checkNotNull(deps.spells.getObjSpell(objs.spell_mark_of_darkness))
+            for ((slot, req) in spell.objReqs.withIndex()) {
+                player.inv[slot] = InvObj(req.obj, req.count * 2)
+            }
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.ifButton(mark_of_darkness_components.cast)
+            advance()
+            for (req in spell.objReqs) assertEquals(req.count, player.inv.count(req.obj))
+            assertEquals(Spellbook.Arceuus.varValue, player.vars[varbits.spellbook])
+            assertEquals(0, player.swapActive)
+            assertEquals(initialXp + 70, player.statMap.getXP(stats.magic))
+        }
+
+    @Test
+    fun GameTestState.`mark of darkness preserves an NPC approach while returning to Lunar`() =
+        runSwapTest(MarkOfDarkness::class, NpcAction::class) {
+            swap(3)
+            val npc = spawnNpc(player.coords.translateX(6), actionTarget)
+            allocZoneCollision(player.coords)
+            advance()
+            val start = player.coords
+            player.opNpc1(npc)
+            player.ifButton(mark_of_darkness_components.cast)
+            advance()
+            assertEquals(Spellbook.Lunars.varValue, player.vars[varbits.spellbook])
+            assertNotNull(player.interaction)
+            assertEquals(EntityFaceTarget(npc), player.faceEntity)
+            assertNotEquals(start, player.coords)
+            advanceUntil({ player.interaction == null }, timeoutTicks = 10)
+            assertMessageSent("Action completed.")
+        }
+
+    @ParameterizedTest
     @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
     fun `utility casts preserve pending movement and noncombat actions`(
         variant: Int,

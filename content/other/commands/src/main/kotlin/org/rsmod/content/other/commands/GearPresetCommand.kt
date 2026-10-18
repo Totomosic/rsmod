@@ -4,7 +4,6 @@ import jakarta.inject.Inject
 import java.util.HexFormat
 import java.util.UUID
 import org.rsmod.api.combat.manager.PlayerAttackManager
-import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.player.clearInteractionRoute
 import org.rsmod.api.player.events.interact.HeldEquipEvents
 import org.rsmod.api.player.output.ChatType
@@ -34,14 +33,6 @@ constructor(
             cheat {
                 val request = args.getOrNull(1) ?: return@cheat
                 if (!request.matches(Regex("[0-9a-f]{8}"))) return@cheat
-                if (!player.modLevel.hasAccessTo(modlevels.admin)) {
-                    player.reply(
-                        request,
-                        "error",
-                        "Server admin access is required for gear setups.",
-                    )
-                    return@cheat
-                }
                 try {
                     val character = checkNotNull(player.uuid)
                     when (args.firstOrNull()) {
@@ -49,7 +40,7 @@ constructor(
                             require(args.size == 2) { "Invalid setup request." }
                             player.sendList(
                                 request,
-                                store.list(character),
+                                store.list(),
                                 "Choose a setup or save your current gear.",
                             )
                         }
@@ -62,16 +53,17 @@ constructor(
                             val preset =
                                 store.save(
                                     character,
+                                    player.displayName,
                                     name,
                                     player.worn.snapshot(),
                                     player.inv.snapshot(),
                                 )
-                            player.sendList(request, store.list(character), "Saved ${preset.name}.")
+                            player.sendList(request, store.list(), "Saved ${preset.name}.")
                         }
                         "load" -> {
                             require(args.size == 3) { "Choose a saved setup." }
                             val id = UUID.fromString(args[2]).toString()
-                            val preset = store.list(character).firstOrNull { it.id == id }
+                            val preset = store.list().firstOrNull { it.id == id }
                             requireNotNull(preset) {
                                 "That setup is no longer available. Refresh the list."
                             }

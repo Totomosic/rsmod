@@ -22,21 +22,32 @@ data class GearPreset(
 
 data class GearPresetFile(val version: Int = 1, val setups: List<GearPreset> = emptyList())
 
-/** Character-owned snapshots, including empty slots and per-item charge variables. */
+/** Shared snapshots, stored per creator so saving cannot overwrite another player's setup. */
 @Singleton
 class GearPresetStore constructor(private val mapper: ObjectMapper, private val root: Path) {
     @Inject constructor(@Json mapper: ObjectMapper) : this(mapper, Path.of(".data/gear-presets"))
 
-    fun list(characterId: Long): List<GearPreset> {
-        val file = root.resolve("$characterId.json")
+    fun list(): List<GearPreset> {
+        if (!Files.isDirectory(root)) return emptyList()
+        return Files.list(root).use { files ->
+            files
+                .filter { it.fileName.toString().matches(Regex("-?[0-9]+\\.json")) }
+                .flatMap { read(it).stream() }
+                .toList()
+                .sortedBy { it.name.lowercase() }
+        }
+    }
+
+    private fun read(file: Path): List<GearPreset> {
         if (!Files.exists(file)) return emptyList()
         val data = mapper.readValue(file.toFile(), GearPresetFile::class.java)
         check(data.version == 1) { "Unsupported gear preset version: ${data.version}" }
-        return data.setups.sortedBy { it.name.lowercase() }
+        return data.setups
     }
 
     fun save(
         characterId: Long,
+        characterName: String,
         name: String,
         equipment: List<GearPresetItem?>,
         inventory: List<GearPresetItem?>,
@@ -44,13 +55,18 @@ class GearPresetStore constructor(private val mapper: ObjectMapper, private val 
         require(validName(name)) {
             "Use 1–24 letters, numbers, spaces, apostrophes, dots, parentheses, underscores or hyphens."
         }
-        val setups = list(characterId).toMutableList()
-        val index = setups.indexOfFirst { it.name.equals(name, ignoreCase = true) }
+        val displayName = "[$characterName] $name"
+        val setups = read(root.resolve("$characterId.json")).toMutableList()
+        val index =
+            setups.indexOfFirst {
+                // Also update setups saved before creator prefixes were added.
+                it.name.substringAfter("] ", it.name).equals(name, ignoreCase = true)
+            }
         require(index >= 0 || setups.size < 100) { "You can save up to 100 setups." }
         val preset =
             GearPreset(
                 if (index >= 0) setups[index].id else UUID.randomUUID().toString(),
-                name,
+                displayName,
                 equipment.toList(),
                 inventory.toList(),
             )

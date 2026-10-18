@@ -7,6 +7,7 @@ import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.nio.file.Path
 import java.util.HexFormat
+import java.util.UUID
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.junit.jupiter.api.Test
@@ -49,6 +50,7 @@ class GearPresetCommandTest {
         .`saved setups survive a fresh store and restore slots quantities and charges`() =
         runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.admin]
+            player.displayName = "Alice"
             player.setCurrentLevel(stats.hitpoints, 99)
             player.worn[Wearpos.RightHand.slot] = InvObj(objs.toxic_blowpipe, 1, 1234)
             player.worn[Wearpos.Quiver.slot] = InvObj(objs.rune_arrow, 250)
@@ -59,12 +61,9 @@ class GearPresetCommandTest {
             val inventory = player.inv.toList()
             val name = HexFormat.of().formatHex("Nylo Duo".toByteArray())
             deps.handler.handle(player, ClientCheat("gearsetups save 1234abcd $name"))
-            val preset = deps.store.list(checkNotNull(player.uuid)).single()
-            assertEquals("Nylo Duo", preset.name)
-            assertEquals(
-                preset,
-                GearPresetStore(deps.mapper, directory).list(checkNotNull(player.uuid)).single(),
-            )
+            val preset = deps.store.list().single()
+            assertEquals("[Alice] Nylo Duo", preset.name)
+            assertEquals(preset, GearPresetStore(deps.mapper, directory).list().single())
             assertTrue(
                 client.filterIsInstance<MessageGame>().any {
                     it.message.startsWith("LGP1 1234abcd item ${preset.id} ")
@@ -90,24 +89,48 @@ class GearPresetCommandTest {
         }
 
     @Test
-    fun GameTestState.`saving a name again updates it while other characters stay isolated`() =
+    fun GameTestState.`ordinary players share setups and update only their own named setup`() =
         runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
-            player.modLevel = deps.modLevels[modlevels.admin]
+            player.modLevel = deps.modLevels[modlevels.player]
+            player.displayName = "Alice"
             val character = checkNotNull(player.uuid)
-            val first = deps.store.save(character, "Nylo Duo", List(14) { null }, List(28) { null })
+            val first =
+                deps.store.save(
+                    character,
+                    "Alice",
+                    "Nylo Duo",
+                    List(14) { null },
+                    List(28) { null },
+                )
             player.inv[4] = InvObj(objs.coins, 200)
             val name = HexFormat.of().formatHex("NYLO DUO".toByteArray())
             deps.handler.handle(player, ClientCheat("gearsetups save abcdef01 $name"))
-            val updated = deps.store.list(character).single()
+            val updated = deps.store.list().single()
             assertEquals(first.id, updated.id)
-            assertEquals("NYLO DUO", updated.name)
+            assertEquals("[Alice] NYLO DUO", updated.name)
             assertEquals(200, updated.inventory[4]?.count)
-            val other = registerPlayer()
-            other.modLevel = deps.modLevels[modlevels.admin]
+            val other = registerPlayer(client = client)
+            other.modLevel = deps.modLevels[modlevels.player]
+            other.displayName = "Bob"
+            other.setCurrentLevel(stats.hitpoints, 99)
+            deps.handler.handle(other, ClientCheat("gearsetups list abcdef02"))
+            assertTrue(
+                client.filterIsInstance<MessageGame>().any {
+                    it.message.startsWith("LGP1 abcdef02 item ${first.id} ")
+                }
+            )
             other.inv[0] = InvObj(objs.coins, 1)
             deps.handler.handle(other, ClientCheat("gearsetups load abcdef01 ${first.id}"))
-            assertEquals(1, other.inv[0]?.count)
-            assertTrue(deps.store.list(checkNotNull(other.uuid)).isEmpty())
+            assertEquals(player.inv.toList(), other.inv.toList())
+            assertEquals(player.worn.toList(), other.worn.toList())
+            other.inv[4] = InvObj(objs.coins, 300)
+            deps.handler.handle(other, ClientCheat("gearsetups save abcdef03 $name"))
+            val shared = GearPresetStore(deps.mapper, directory).list()
+            assertEquals(2, shared.size)
+            assertEquals(updated, shared.single { it.id == first.id })
+            val bobs = shared.single { it.id != first.id }
+            assertEquals("[Bob] NYLO DUO", bobs.name)
+            assertEquals(300, bobs.inventory[4]?.count)
         }
 
     @Test
@@ -135,7 +158,7 @@ class GearPresetCommandTest {
                     ),
                     Triple("Bad size", List(13) { null }, List(28) { null }),
                 )) {
-                val invalid = deps.store.save(checkNotNull(player.uuid), name, worn, inv)
+                val invalid = deps.store.save(checkNotNull(player.uuid), "Alice", name, worn, inv)
                 deps.handler.handle(player, ClientCheat("gearsetups load 1234abcd ${invalid.id}"))
                 assertEquals(equipment, player.worn.toList())
                 assertEquals(inventory, player.inv.toList())
@@ -143,26 +166,53 @@ class GearPresetCommandTest {
         }
 
     @Test
-    fun GameTestState
-        .`ordinary players cannot spawn gear through presets and empty setups clear every slot`() =
+    fun GameTestState.`ordinary players can save and apply empty setups to clear every slot`() =
         runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
             player.modLevel = deps.modLevels[modlevels.player]
+            player.displayName = "Alice"
             val name = HexFormat.of().formatHex("Empty".toByteArray())
-            deps.handler.handle(player, ClientCheat("gearsetups save 1234abcd $name"))
-            assertTrue(deps.store.list(checkNotNull(player.uuid)).isEmpty())
-            assertTrue(
-                client.filterIsInstance<MessageGame>().any {
-                    it.message.startsWith("LGP1 1234abcd error ")
-                }
-            )
-            player.modLevel = deps.modLevels[modlevels.admin]
             player.setCurrentLevel(stats.hitpoints, 99)
             deps.handler.handle(player, ClientCheat("gearsetups save 1234abcd $name"))
-            val preset = deps.store.list(checkNotNull(player.uuid)).single()
+            val preset = deps.store.list().single()
             player.inv[27] = InvObj(objs.coins, 500)
             player.worn[Wearpos.RightHand.slot] = InvObj(objs.abyssal_whip)
             deps.handler.handle(player, ClientCheat("gearsetups load 1234abcd ${preset.id}"))
             assertTrue(player.inv.isEmpty())
             assertTrue(player.worn.isEmpty())
+        }
+
+    @Test
+    fun GameTestState.`existing character files are shared and resaving adds the creator prefix`() =
+        runInjectedGameTest(Dependencies::class, module(), GearPresetCommand::class) { deps ->
+            player.displayName = "Alice"
+            val legacy =
+                GearPreset(
+                    UUID.randomUUID().toString(),
+                    "Mage",
+                    List(14) { null },
+                    List(28) { null },
+                )
+            deps.mapper.writeValue(
+                directory.resolve("${player.uuid}.json").toFile(),
+                GearPresetFile(setups = listOf(legacy)),
+            )
+            assertEquals(listOf(legacy), deps.store.list())
+            val other = registerPlayer()
+            other.modLevel = deps.modLevels[modlevels.player]
+            other.setCurrentLevel(stats.hitpoints, 99)
+            other.inv[0] = InvObj(objs.coins, 1)
+            deps.handler.handle(other, ClientCheat("gearsetups load abcdef01 ${legacy.id}"))
+            assertTrue(other.inv.isEmpty())
+            val saved =
+                deps.store.save(
+                    checkNotNull(player.uuid),
+                    "Alice",
+                    "Mage",
+                    List(14) { null },
+                    List(28) { null },
+                )
+            assertEquals(legacy.id, saved.id)
+            assertEquals("[Alice] Mage", saved.name)
+            assertEquals(listOf(saved), GearPresetStore(deps.mapper, directory).list())
         }
 }

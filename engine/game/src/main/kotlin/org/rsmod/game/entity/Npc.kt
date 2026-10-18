@@ -52,13 +52,25 @@ public class Npc(
     override val collisionStrategy: CollisionStrategy?
         get() = moveRestrict.collisionStrategy
 
-    /** Set before registration so adding, moving and removing reserve the same footprint. */
-    override var collisionSize: Int = type.size
+    private var reservedCollisionSize: Int = type.size
+
+    /** Set before registration; use [resizeCollision] to update a live reservation. */
+    override var collisionSize: Int
+        get() = reservedCollisionSize
         set(value) {
             check(!isSlotAssigned) { "Cannot change collision footprint while registered." }
             require(value in 1..size) { "Invalid collision footprint: $value (size=$size)" }
-            field = value
+            reservedCollisionSize = value
         }
+
+    /** Replaces a registered NPC's reservation using the new movement footprint. */
+    public fun resizeCollision(collision: CollisionFlagMap, size: Int) {
+        require(size in 1..this.size) { "Invalid collision footprint: $size (size=${this.size})" }
+        if (collisionSize == size) return
+        if (isSlotAssigned) removeBlockWalkCollision(collision, coords)
+        reservedCollisionSize = size
+        if (isSlotAssigned) addBlockWalkCollision(collision, coords)
+    }
 
     override val heroPoints: HeroPoints = HeroPoints(type.heroCount)
 

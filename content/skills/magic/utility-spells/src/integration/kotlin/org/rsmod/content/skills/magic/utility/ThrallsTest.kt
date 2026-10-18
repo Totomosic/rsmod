@@ -5,6 +5,8 @@ import com.google.inject.Scopes
 import jakarta.inject.Inject
 import java.nio.file.Path
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.openrs2.cache.Cache
 import org.rsmod.api.cache.Js5Archives
 import org.rsmod.api.combat.commons.PlayerAttackCheck
@@ -168,14 +170,19 @@ class ThrallsTest {
             }
         }
 
-    @Test
-    fun GameTestState.`lifetime snapshots boosted magic and expires at exactly 112 ticks`() =
-        runThrallTest { deps ->
+    @ParameterizedTest
+    @ValueSource(ints = [76, 99, 112])
+    fun `lifetime snapshots magic and expires after twice that many ticks`(
+        magic: Int,
+        state: GameTestState,
+    ) =
+        state.runThrallTest { deps ->
+            player.setCurrentLevel(stats.magic, magic)
             val castCycle = mapClock.cycle
             cast()
             val summoned = thrall(deps)
-            player.setCurrentLevel(stats.magic, 76)
-            advance(ticks = castCycle + 111 - mapClock.cycle)
+            player.setCurrentLevel(stats.magic, 50)
+            advance(ticks = castCycle + magic * 2 - 1 - mapClock.cycle)
             assertTrue(summoned.isSlotAssigned)
             advance(ticks = 1)
             assertFalse(summoned.isSlotAssigned)

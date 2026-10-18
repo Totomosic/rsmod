@@ -58,7 +58,7 @@ import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-/** Greater thralls: one tick per current Magic level, with independent four-tick attacks. */
+/** Greater thralls: two ticks per current Magic level, with independent four-tick attacks. */
 class Thralls
 @Inject
 constructor(
@@ -138,7 +138,8 @@ constructor(
         npc.spotanim(style.impact)
         state.thrall = npc
         state.style = style
-        state.expiry = clock.cycle + player.magicLvl
+        // Apply the doubled duration from master Combat Achievements to every player.
+        state.expiry = clock.cycle + player.magicLvl * 2
         state.nextAttack = clock.cycle + 4
         state.cooldown = clock.cycle + 16
         state.wanderCentre = npc.coords

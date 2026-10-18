@@ -61,10 +61,12 @@ import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.content.skills.magic.spell.attacks.SpellAttacksModule
 import org.rsmod.content.skills.magic.utility.DeathCharge
+import org.rsmod.content.skills.magic.utility.MarkOfDarkness
 import org.rsmod.content.skills.magic.utility.SpellbookSwap
 import org.rsmod.content.skills.magic.utility.Thralls
 import org.rsmod.content.skills.magic.utility.death_charge_components
 import org.rsmod.content.skills.magic.utility.death_charge_varbits
+import org.rsmod.content.skills.magic.utility.mark_of_darkness_components
 import org.rsmod.content.skills.magic.utility.spellbook_swap_components
 import org.rsmod.content.skills.magic.utility.spellbook_swap_varps
 import org.rsmod.content.skills.magic.utility.thrall_components
@@ -73,7 +75,9 @@ import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.util.EntityFaceTarget
 import org.rsmod.game.hit.Hit
+import org.rsmod.game.interact.InteractionNpc
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.spot.EntitySpotanim
 import org.rsmod.game.type.interf.IfButtonOp
@@ -90,7 +94,7 @@ import org.rsmod.routefinder.flag.CollisionFlag
 @Execution(ExecutionMode.SAME_THREAD)
 class AncientSpellsTest {
     @ParameterizedTest
-    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
+    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     fun `utility casts preserve ongoing attacks and their timing`(
         variant: Int,
         state: GameTestState,
@@ -100,6 +104,7 @@ class AncientSpellsTest {
             WeaponAttackTypesScript::class,
             DeathCharge::class,
             Thralls::class,
+            MarkOfDarkness::class,
         ) {
             val npc = spawnTarget()
             player.placeAt(npc.coords.translateZ(1))
@@ -116,13 +121,14 @@ class AncientSpellsTest {
             val nextAttack = player.actionDelay
             castUtility(variant)
             assertEquals(nextAttack, player.actionDelay)
-            assertNotNull(player.interaction)
+            assertEquals(npc, (player.interaction as? InteractionNpc)?.target)
+            assertEquals(EntityFaceTarget(npc), player.faceEntity)
             advance(ticks = 8)
             assertEquals(listOf(firstAttack, firstAttack + 4, firstAttack + 8), attacks)
         }
 
     @ParameterizedTest
-    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7])
+    @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     fun `utility casts preserve attacks clicked earlier in the casting tick`(
         variant: Int,
         state: GameTestState,
@@ -132,6 +138,7 @@ class AncientSpellsTest {
             WeaponAttackTypesScript::class,
             DeathCharge::class,
             Thralls::class,
+            MarkOfDarkness::class,
         ) {
             val npc = spawnTarget()
             prepareUtilityCast(variant)
@@ -143,14 +150,15 @@ class AncientSpellsTest {
             advance(ticks = 25)
             player.opNpc2(npc)
             castUtility(variant)
-            assertNotNull(player.interaction)
+            assertEquals(npc, (player.interaction as? InteractionNpc)?.target)
+            assertEquals(EntityFaceTarget(npc), player.faceEntity)
             advance(ticks = 10)
             assertTrue(attacks.isNotEmpty())
         }
 
     private fun GameTestScope.prepareUtilityCast(variant: Int) {
         VarPlayerIntMapSetter.set(player, varbits.spellbook, 3)
-        if (variant >= 4) VarPlayerIntMapSetter.set(player, spellbook_swap_varps.active, 1)
+        if (variant >= 5) VarPlayerIntMapSetter.set(player, spellbook_swap_varps.active, 1)
         player.setCurrentLevel(stats.prayer, 99)
         player.inv[1] = InvObj(checkNotNull(objTypes[25818])) // Book of the dead.
         player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
@@ -163,12 +171,19 @@ class AncientSpellsTest {
                 thrall_components.ghost,
                 thrall_components.skeleton,
                 thrall_components.zombie,
+                mark_of_darkness_components.cast,
             )
-        player.ifButton(buttons[variant % 4])
+        val initialXp = player.statMap.getXP(stats.magic)
+        player.ifButton(buttons[variant % 5])
         advance(ticks = 1)
-        val active = if (variant % 4 == 0) death_charge_varbits.active else thrall_varbits.active
-        assertEquals(1, player.vars[active])
-        assertEquals(if (variant >= 4) 2 else 3, player.vars[varbits.spellbook])
+        if (variant % 5 == 4) {
+            assertEquals(initialXp + 70, player.statMap.getXP(stats.magic))
+        } else {
+            val active =
+                if (variant % 5 == 0) death_charge_varbits.active else thrall_varbits.active
+            assertEquals(1, player.vars[active])
+        }
+        assertEquals(if (variant >= 5) 2 else 3, player.vars[varbits.spellbook])
     }
 
     @Test

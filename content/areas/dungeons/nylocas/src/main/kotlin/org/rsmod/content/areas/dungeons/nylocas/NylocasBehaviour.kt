@@ -331,8 +331,10 @@ constructor(
     private fun updateAppearance(npc: Npc, state: State) {
         // The cache's "fighting" forms are player aggros. Pillar attackers retain
         // ordinary IDs, including after entering the arena and during style swaps.
+        val fighting = state.entered && state.pillar == null
+        npc.resizeCollision(collision, if (fighting) npc.size else 1)
         val type =
-            if (state.entered && state.pillar == null) {
+            if (fighting) {
                 nylocas_npcs.fighting(state.spawn.size, state.style)
             } else {
                 nylocas_npcs.incoming(state.spawn.size, state.style)
