@@ -1,6 +1,7 @@
 package org.rsmod.api.route
 
 import jakarta.inject.Inject
+import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.PathingEntityAvatar
 import org.rsmod.game.movement.RouteRequest
 import org.rsmod.game.movement.RouteRequestCoord
@@ -39,6 +40,7 @@ public class RouteFactory @Inject constructor(flags: CollisionFlagMap) {
                 destWidth = 1,
                 destLength = 1,
                 collision = collision,
+                diagonalFirst = source is NpcAvatar,
             )
         }
 
@@ -58,6 +60,7 @@ public class RouteFactory @Inject constructor(flags: CollisionFlagMap) {
                 destWidth = destination.size,
                 destLength = destination.size,
                 collision = collision,
+                diagonalFirst = source is NpcAvatar,
                 locShape = RECTANGLE_EXCLUSIVE_STRATEGY,
             )
         }
@@ -82,6 +85,7 @@ public class RouteFactory @Inject constructor(flags: CollisionFlagMap) {
                 locAngle = angle,
                 blockAccessFlags = forceApproachFlags,
                 collision = collision,
+                diagonalFirst = source is NpcAvatar,
             )
         }
     }

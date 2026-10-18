@@ -34,6 +34,8 @@ public class RouteFinding(
     private val useRouteBlockerFlags: Boolean = DEFAULT_USE_ROUTE_BLOCKER_FLAGS,
 ) {
     private val directions = IntArray(searchMapSize * searchMapSize)
+    private val predecessors = IntArray(searchMapSize * searchMapSize)
+    private var diagonalFirst = false
     private val distances = IntArray(searchMapSize * searchMapSize) { DEFAULT_DISTANCE_VALUE }
     private val validLocalX = IntArray(ringBufferSize)
     private val validLocalZ = IntArray(ringBufferSize)
@@ -60,6 +62,9 @@ public class RouteFinding(
      *   strategy" (AKA exit strategy) is checked. This can be seen in locs such as staircases,
      *   where all directions excluding the direction with access to the steps are "blocked." (see
      *   [org.rsmod.routefinder.flag.BlockAccessFlag])
+     * @param diagonalFirst prefer diagonals at the start of equally short routes by selecting
+     *   cardinal predecessors first while tracing back from the destination. Collision and reach
+     *   checks still run in the forward travel direction.
      * @return [Route.FAILED] if there is no valid path from source to destination coordinates. If
      *   validated route could _not_ reach destination, but [moveNear] flag is enabled and
      *   [findClosestApproachPoint] returns true - route is returned with [Route.alternative] as
@@ -84,10 +89,12 @@ public class RouteFinding(
         blockAccessFlags: Int = 0,
         maxWaypoints: Int = 25,
         collision: CollisionStrategy = CollisionStrategy.Normal,
+        diagonalFirst: Boolean = false,
     ): Route {
         require(srcX in 0..0x7FFF && srcZ in 0..0x7FFF)
         require(destX in 0..0x7FFF && destZ in 0..0x7FFF)
         require(level in 0..0x3)
+        this.diagonalFirst = diagonalFirst
         reset()
         val baseX = srcX - (searchMapSize / 2)
         val baseZ = srcZ - (searchMapSize / 2)
@@ -210,7 +217,7 @@ public class RouteFinding(
             }
         }
         val waypoints = ArrayDeque<RouteCoordinates>(maxWaypoints + 1)
-        var nextDir = directions[currLocalX, currLocalZ]
+        var nextDir = backtrackDirection(currLocalX, currLocalZ)
         var currDir = -1
         for (i in directions.indices) {
             if (currLocalX == localSrcX && currLocalZ == localSrcZ) {
@@ -232,7 +239,7 @@ public class RouteFinding(
             } else if ((currDir and DirectionFlag.SOUTH) != 0) {
                 currLocalZ--
             }
-            nextDir = directions[currLocalX, currLocalZ]
+            nextDir = backtrackDirection(currLocalX, currLocalZ)
         }
         return Route(waypoints = waypoints, alternative = !pathFound, success = true)
     }
@@ -289,7 +296,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -302,7 +309,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -315,7 +322,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -328,7 +335,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -341,7 +348,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -365,7 +372,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], BLOCK_SOUTH_EAST) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ, level],
@@ -386,7 +393,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], BLOCK_NORTH_WEST) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ, level],
@@ -407,7 +414,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], BLOCK_NORTH_EAST) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ, level],
@@ -474,7 +481,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -493,7 +500,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + 2, z, level],
                         BLOCK_SOUTH_EAST,
@@ -512,7 +519,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -531,7 +538,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + 2, level],
                         BLOCK_NORTH_WEST,
@@ -551,7 +558,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ, level],
                         BLOCK_NORTH_AND_SOUTH_EAST,
@@ -575,7 +582,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_NORTH_EAST_AND_WEST,
@@ -599,7 +606,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         BLOCK_NORTH_AND_SOUTH_EAST,
@@ -623,7 +630,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + 2, level],
                         BLOCK_SOUTH_EAST_AND_WEST,
@@ -693,7 +700,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -719,7 +726,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, z, level],
                         BLOCK_SOUTH_EAST,
@@ -748,7 +755,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -774,7 +781,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + srcSize, level],
                         BLOCK_NORTH_WEST,
@@ -804,7 +811,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST,
@@ -835,7 +842,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, z, level],
                         BLOCK_SOUTH_EAST,
@@ -866,7 +873,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + srcSize, level],
                         BLOCK_NORTH_WEST,
@@ -898,7 +905,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, currLocalZ + srcSize, level],
                         BLOCK_NORTH_EAST,
@@ -977,7 +984,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -990,7 +997,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -1003,7 +1010,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -1016,7 +1023,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(flags[baseX, baseZ, x, z, level], clipFlag)
             ) {
                 appendDirection(x, z, dirFlag, nextDistance)
@@ -1029,7 +1036,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1053,7 +1060,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         BLOCK_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1077,7 +1084,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         BLOCK_NORTH_WEST_ROUTE_BLOCKER,
@@ -1101,7 +1108,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_NORTH_EAST_ROUTE_BLOCKER,
@@ -1171,7 +1178,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1190,7 +1197,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + 2, z, level],
                         BLOCK_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1209,7 +1216,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1228,7 +1235,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + 2, level],
                         BLOCK_NORTH_WEST_ROUTE_BLOCKER,
@@ -1248,7 +1255,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ, level],
                         BLOCK_NORTH_AND_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1272,7 +1279,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         BLOCK_NORTH_EAST_AND_WEST_ROUTE_BLOCKER,
@@ -1296,7 +1303,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         BLOCK_NORTH_AND_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1320,7 +1327,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + 2, level],
                         CollisionFlag.BLOCK_SOUTH_EAST_AND_WEST_ROUTE_BLOCKER,
@@ -1390,7 +1397,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.EAST
             if (
                 currLocalX > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1416,7 +1423,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.WEST
             if (
                 currLocalX < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, z, level],
                         BLOCK_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1445,7 +1452,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.NORTH
             if (
                 currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1471,7 +1478,7 @@ public class RouteFinding(
             dirFlag = DirectionFlag.SOUTH
             if (
                 currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + srcSize, level],
                         BLOCK_NORTH_WEST_ROUTE_BLOCKER,
@@ -1501,7 +1508,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, z, level],
                         CollisionFlag.BLOCK_SOUTH_WEST_ROUTE_BLOCKER,
@@ -1532,7 +1539,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ > 0 &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, z, level],
                         BLOCK_SOUTH_EAST_ROUTE_BLOCKER,
@@ -1563,7 +1570,7 @@ public class RouteFinding(
             if (
                 currLocalX > 0 &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, x, currLocalZ + srcSize, level],
                         BLOCK_NORTH_WEST_ROUTE_BLOCKER,
@@ -1595,7 +1602,7 @@ public class RouteFinding(
             if (
                 currLocalX < relativeSearchSize &&
                     currLocalZ < relativeSearchSize &&
-                    directions[x, z] == 0 &&
+                    canVisit(x, z, nextDistance) &&
                     collision.canMove(
                         flags[baseX, baseZ, currLocalX + srcSize, currLocalZ + srcSize, level],
                         CollisionFlag.BLOCK_NORTH_EAST_ROUTE_BLOCKER,
@@ -1675,8 +1682,23 @@ public class RouteFinding(
         return lowestCost != MAX_ALTERNATIVE_ROUTE_LOWEST_COST
     }
 
+    private fun canVisit(x: Int, z: Int, distance: Int): Boolean =
+        directions[x, z] == 0 || (diagonalFirst && distances[x, z] == distance)
+
+    private fun backtrackDirection(x: Int, z: Int): Int {
+        if (!diagonalFirst || distances[x, z] == 0) return directions[x, z]
+        val incoming = predecessors[x, z]
+        return BACKTRACK_DIRECTIONS.first { incoming and (1 shl it) != 0 }
+    }
+
     private fun appendDirection(x: Int, z: Int, direction: Int, distance: Int) {
         val index = (x * searchMapSize) + z
+        if (diagonalFirst && distance != 0) {
+            // Keep every validated shortest-path predecessor, without enqueuing a tile twice.
+            // This preserves one-way collision, footprints, and custom collision strategies.
+            predecessors[index] = predecessors[index] or (1 shl direction)
+            if (directions[index] != 0) return
+        }
         directions[index] = direction
         distances[index] = distance
         validLocalX[bufWriterIndex] = x
@@ -1686,6 +1708,7 @@ public class RouteFinding(
 
     private fun reset() {
         Arrays.fill(directions, 0)
+        if (diagonalFirst) Arrays.fill(predecessors, 0)
         Arrays.fill(distances, DEFAULT_DISTANCE_VALUE)
         bufReaderIndex = 0
         bufWriterIndex = 0
@@ -1711,6 +1734,18 @@ public class RouteFinding(
     }
 
     public companion object {
+        private val BACKTRACK_DIRECTIONS =
+            intArrayOf(
+                DirectionFlag.WEST,
+                DirectionFlag.EAST,
+                DirectionFlag.SOUTH,
+                DirectionFlag.NORTH,
+                DirectionFlag.SOUTH_WEST,
+                DirectionFlag.SOUTH_EAST,
+                DirectionFlag.NORTH_WEST,
+                DirectionFlag.NORTH_EAST,
+            )
+
         /**
          * Calculates coordinates for [sourceX]/[sourceZ] to move to interact with
          * [targetX]/[targetZ] We first determine the cardinal direction of the source relative to
