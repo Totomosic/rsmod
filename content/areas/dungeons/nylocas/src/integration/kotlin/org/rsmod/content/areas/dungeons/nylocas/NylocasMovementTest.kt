@@ -20,6 +20,7 @@ import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.events.EventBus
+import org.rsmod.game.MapClock
 import org.rsmod.game.entity.NpcAvatar
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.map.collision.add
@@ -41,6 +42,7 @@ class NylocasMovementTest {
         val collision: CollisionFlagMap,
         val npcRepo: NpcRepository,
         val events: EventBus,
+        val clock: MapClock,
     )
 
     @ParameterizedTest
@@ -668,8 +670,6 @@ class NylocasMovementTest {
             outsider.setBaseLevel(stats.hitpoints, 99)
             outsider.setCurrentLevel(stats.hitpoints, 99)
             advance(ticks = 30)
-            assertTrue(player.hitpoints < 99)
-            assertEquals(99, other.hitpoints)
             assertEquals(99, outsider.hitpoints)
             player.telejump(room.normal[NylocasRoom.bridge])
             advance(ticks = 3)
@@ -678,6 +678,158 @@ class NylocasMovementTest {
             assertEquals(hpAfterDeparture, player.hitpoints)
             assertTrue(other.hitpoints < 99)
             assertEquals(99, outsider.hitpoints)
+        }
+    }
+
+    @Test
+    fun GameTestState
+        .`fighting nylo rolls among every room player each tick with repeats allowed`() {
+        val wave = NylocasWave(4, westNorth = NylocasSpawn(NylocasSize.Small, NylocasStyle.Magic))
+        runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val npc = deps.npcs.single()
+            val anchor = room.normal[CoordGrid(3294, 4247, 0)]
+            val destination = room.normal[CoordGrid(3300, 4251, 0)]
+            player.telejump(destination)
+            val candidates = listOf(player) + List(4) { registerPlayer(coords = destination) }
+            registerPlayer(coords = room.normal[NylocasRoom.bridge])
+            val otherRoom = createRegion(NylocasRoom.template)
+            registerPlayer(coords = otherRoom.normal[CoordGrid(3300, 4251, 0)])
+            for (index in listOf(4, 4, 0, 2, 1, 3)) {
+                npc.telejump(anchor)
+                random.next = index
+                advance()
+                assertEquals(candidates[index].slotId, npc.faceEntity.playerSlot)
+                assertTrue(
+                    npc.coords.chebyshevDistance(destination) <
+                        anchor.chebyshevDistance(destination)
+                )
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "Small, Melee",
+        "Small, Ranged",
+        "Small, Magic",
+        "Big, Melee",
+        "Big, Ranged",
+        "Big, Magic",
+    )
+    fun `fighting nylo chases only its chosen target and attacks when that target is in reach`(
+        size: NylocasSize,
+        style: NylocasStyle,
+        state: GameTestState,
+    ) {
+        val wave = NylocasWave(4, westNorth = NylocasSpawn(size, style))
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(wave),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            WeaponAttackStylesScript::class,
+            PlayerHitScript::class,
+        ) { deps ->
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 15)
+            val npc = deps.npcs.single()
+            val anchor = room.normal[CoordGrid(3294, 4247, 0)]
+            player.telejump(anchor.translateX(-1))
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
+            val distant = registerPlayer(coords = room.normal[CoordGrid(3301, 4251, 0)])
+            val attacks = mutableListOf<Int>()
+            deps.events.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (npc.pendingSequence != EntitySeq.NULL) attacks += npc.pendingSequence.id
+            }
+            npc.telejump(anchor)
+            random.next = 1
+            advance()
+            assertEquals(distant.slotId, npc.faceEntity.playerSlot)
+            assertTrue(attacks.isEmpty())
+            assertTrue(npc.coords != anchor)
+
+            npc.telejump(anchor)
+            random.next = 0
+            advance()
+            assertEquals(player.slotId, npc.faceEntity.playerSlot)
+            assertEquals(1, attacks.size)
+            repeat(3) {
+                npc.telejump(anchor)
+                random.next = 1
+                advance()
+                assertEquals(distant.slotId, npc.faceEntity.playerSlot)
+                assertEquals(1, attacks.size)
+            }
+            // The three-tick cooldown has elapsed, but only a reachable chosen target can be hit.
+            npc.telejump(anchor)
+            random.next = 0
+            advance()
+            assertEquals(2, attacks.size)
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("Small, Ranged", "Small, Magic", "Big, Ranged", "Big, Magic")
+    fun `age 26 melee flickers keep chasing players but never attack`(
+        size: NylocasSize,
+        initialStyle: NylocasStyle,
+        state: GameTestState,
+    ) {
+        val spawn = NylocasSpawn(size, initialStyle, styleAt26 = NylocasStyle.Melee)
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(NylocasWave(4, westNorth = spawn)),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            WeaponAttackStylesScript::class,
+            PlayerHitScript::class,
+        ) { deps ->
+            val room = start(deps)
+            val born = deps.clock.cycle - 1
+            player.telejump(room.normal[NylocasRoom.bridge])
+            advance(ticks = 16)
+            val npc = deps.npcs.single()
+            val anchor = room.normal[CoordGrid(3294, 4247, 0)]
+            npc.telejump(anchor)
+            player.telejump(anchor.translateX(-1))
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
+            val attacks = mutableListOf<Int>()
+            deps.events.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                if (npc.pendingSequence != EntitySeq.NULL) attacks += npc.pendingSequence.id
+            }
+            advanceUntil(predicate = { deps.clock.cycle == born + 26 })
+            assertTrue(attacks.isNotEmpty())
+            attacks.clear()
+            // Age 26 itself must already suppress attacks, even with an expired cooldown.
+            advance()
+            assertEquals(nylocas_npcs.fighting(size, NylocasStyle.Melee).id, npc.visType.id)
+            assertTrue(attacks.isEmpty())
+            val distant = registerPlayer(coords = room.normal[CoordGrid(3301, 4251, 0)])
+            npc.telejump(anchor)
+            random.next = 1
+            advance()
+            assertEquals(distant.slotId, npc.faceEntity.playerSlot)
+            assertTrue(
+                npc.coords.chebyshevDistance(distant.coords) <
+                    anchor.chebyshevDistance(distant.coords)
+            )
+            distant.telejump(room.normal[NylocasRoom.bridge])
+            npc.telejump(anchor)
+            // Spend the rest of its active lifetime in melee reach.
+            player.telejump(anchor.translateX(-1))
+            advance(ticks = size.expiryAnimationAge - (deps.clock.cycle - born))
+            assertTrue(attacks.isEmpty())
         }
     }
 

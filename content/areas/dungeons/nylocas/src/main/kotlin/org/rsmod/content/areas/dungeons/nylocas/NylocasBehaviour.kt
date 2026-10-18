@@ -291,8 +291,9 @@ constructor(
     private fun tick(npc: Npc) {
         val state = active[npc] ?: return
         if (state.expiring || npc.hitpoints <= 0 || clock.cycle <= state.spawnCycle) return
+        val age = clock.cycle - state.spawnCycle
         val previousStyle = state.style
-        state.style = state.spawn.styleAtAge(clock.cycle - state.spawnCycle)
+        state.style = state.spawn.styleAtAge(age)
         updateAppearance(npc, state)
         if (state.style != previousStyle) cancelPlayerAttacks(npc)
         if (!npc.canProcess) return
@@ -318,11 +319,8 @@ constructor(
             return
         }
         val candidates = players.filter { validTarget(it, state.region) }
-        val target =
-            state.target?.takeIf { it in candidates }
-                ?: candidates.minByOrNull { npc.coords.chebyshevDistance(it.coords) }
-        state.target = target
-        if (target == null) return
+        // Roll independently every tick, including during cooldown and with repeats allowed.
+        val target = random.pickOrNull(candidates) ?: return
         npc.facePlayer(target)
         val inRange =
             when (state.style) {
@@ -337,6 +335,8 @@ constructor(
             route(npc, target.avatar)
             return
         }
+        // Age-26 melee flickers still choose and chase players, but cannot attack.
+        if (age >= 26 && state.spawn.styleAt26 == NylocasStyle.Melee) return
         if (clock.cycle < state.nextAttack) return
         attack(npc, target, state.style)
         state.nextAttack = clock.cycle + npc.visType.param(params.attackrate).coerceAtLeast(1)
@@ -523,7 +523,6 @@ constructor(
         val teamSize: Int,
         var style: NylocasStyle = spawn.style,
         var entered: Boolean = false,
-        var target: Player? = null,
         var nextAttack: Int = 0,
         val terrainRoute: ArrayDeque<CoordGrid> = ArrayDeque(),
         var expiring: Boolean = false,
