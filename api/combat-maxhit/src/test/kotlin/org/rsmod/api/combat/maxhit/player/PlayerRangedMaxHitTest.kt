@@ -8,6 +8,19 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 
 class PlayerRangedMaxHitTest {
+    @Test
+    fun `elite void with 112 ranged rigour and 44 ranged strength hits 28 on rapid`() {
+        val effectiveRanged =
+            PlayerRangedMaxHit.calculateEffectiveRanged(
+                visibleRangedLvl = 112,
+                styleBonus = 8,
+                prayerBonus = 1.23,
+                voidBonus = 1.125,
+            )
+        assertEquals(28, PlayerRangedMaxHit.calculateBaseDamage(effectiveRanged, 44))
+        assertEquals(163, effectiveRanged)
+    }
+
     /**
      * Verifies that the `Sharp eye` prayer correctly applies its `+1` range boost when the player's
      * visible range level is `20` or lower.

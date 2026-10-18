@@ -2278,6 +2278,7 @@
 4846	dom_previous_deepest_level
 4848	collection_count_unsynced
 
+65487	spellbook_swap_active
 65488	vengeance_cooldown_expiry
 65489	death_charge_stacks
 65490	death_charge_expiry

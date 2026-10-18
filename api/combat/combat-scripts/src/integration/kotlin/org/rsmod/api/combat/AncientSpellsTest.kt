@@ -5,14 +5,23 @@ package org.rsmod.api.combat
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
+import kotlin.reflect.KClass
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.manager.PlayerAttackManager
+import org.rsmod.api.combat.scripts.PvNCombatScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
+import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
+import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.refs.areas
+import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.seqs
@@ -51,6 +60,9 @@ import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.content.skills.magic.spell.attacks.SpellAttacksModule
+import org.rsmod.content.skills.magic.utility.SpellbookSwap
+import org.rsmod.content.skills.magic.utility.spellbook_swap_components
+import org.rsmod.content.skills.magic.utility.spellbook_swap_varps
 import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
@@ -58,17 +70,129 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.spot.EntitySpotanim
+import org.rsmod.game.type.interf.IfButtonOp
 import org.rsmod.game.type.npc.UnpackedNpcType
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.type.util.ParamMap
 import org.rsmod.map.CoordGrid
+import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 // LOS tests temporarily change shared collision flags; keep casts in this class sequential.
 @Execution(ExecutionMode.SAME_THREAD)
 class AncientSpellsTest {
+    @Test
+    fun GameTestState.`ongoing combat pauses during SBS and continues without another click`() =
+        runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {
+            val npc = spawnTarget()
+            player.placeAt(npc.coords.translateZ(1))
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, 2)
+            player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+            val owner = player
+            val attacks = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attacks += target
+            }
+            advance(ticks = 25)
+            player.opNpc2(npc)
+            advance(ticks = 1)
+            assertEquals(listOf(npc), attacks)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            advance(ticks = 3)
+            assertEquals(listOf(npc), attacks)
+            advance(ticks = 1)
+            assertEquals(0, player.vars[varbits.spellbook])
+            assertEquals(listOf(npc, npc), attacks)
+            advance(ticks = 4)
+            assertEquals(listOf(npc, npc, npc), attacks)
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [1, 6])
+    fun `attack clicked before SBS in the same tick resumes when the stall ends`(
+        distance: Int,
+        state: GameTestState,
+    ) =
+        state.runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {
+            val npc = spawnTarget()
+            player.placeAt(npc.coords.translateZ(distance))
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, 2)
+            player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+            val owner = player
+            val attackTicks = mutableListOf<Int>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner && target === npc) attackTicks += mapClock.cycle
+            }
+            // Initial combat timestamps are zero; allow the initial combat window to pass.
+            advance(ticks = 25)
+            val start = player.coords
+            player.opNpc2(npc)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            advance(ticks = 1)
+            assertTrue(attackTicks.isEmpty())
+            advance(ticks = 2)
+            assertTrue(attackTicks.isEmpty())
+            assertEquals(start, player.coords)
+            advance(ticks = 1)
+            assertEquals(0, player.vars[varbits.spellbook])
+            assertNoMessageSent()
+            if (distance == 1) {
+                assertEquals(1, attackTicks.size)
+                assertTrue(npc.pendingHits().isNotEmpty())
+            } else {
+                assertTrue(attackTicks.isEmpty())
+                assertNotEquals(start, player.coords)
+                advance(ticks = 10)
+                assertTrue(attackTicks.isNotEmpty())
+            }
+        }
+
+    @Test
+    fun GameTestState.`attack clicked after SBS in the same tick does not resume`() =
+        runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {
+            val npc = spawnTarget()
+            player.placeAt(npc.coords.translateZ(1))
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, 2)
+            player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+            val owner = player
+            val attacks = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attacks += target
+            }
+            advance(ticks = 25)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            player.opNpc2(npc)
+            advance(ticks = 10)
+            assertEquals(0, player.vars[varbits.spellbook])
+            assertTrue(attacks.isEmpty())
+            assertTrue(npc.pendingHits().isEmpty())
+        }
+
+    @Test
+    fun GameTestState.`spellbook swap returns before ancient damage lands including splashes`() =
+        runAncientTest { deps ->
+            val npc = spawnBarragePrimary()
+            advance()
+            for (splash in listOf(false, true)) {
+                VarPlayerIntMapSetter.set(player, varbits.spellbook, 1)
+                VarPlayerIntMapSetter.set(player, spellbook_swap_varps.active, 1)
+                VarPlayerIntMapSetter.set(player, varbits.autocast_set, 1)
+                VarPlayerIntMapSetter.set(player, varbits.autocast_spell, 1)
+                random.next = if (splash) 9_999 else 0
+                if (!splash) random.then = 10
+                cast(deps, npc)
+                assertEquals(2, player.vars[varbits.spellbook])
+                assertEquals(0, player.vars[spellbook_swap_varps.active])
+                assertEquals(0, player.vars[varbits.autocast_set])
+                assertEquals(0, player.vars[varbits.autocast_spell])
+                assertEquals(if (splash) 0 else 10, npc.pendingHits().single().damage)
+                advance(ticks = 6)
+                assertEquals(190, npc.hitpoints)
+            }
+        }
+
     @Test
     fun GameTestState.`blood barrage heals from total rolls before target health clamping`() =
         runAncientTest { deps ->
@@ -776,7 +900,10 @@ class AncientSpellsTest {
         }
     }
 
-    private fun GameTestState.runAncientTest(testBody: GameTestScope.(Dependencies) -> Unit) =
+    private fun GameTestState.runAncientTest(
+        vararg extraScripts: KClass<out PluginScript>,
+        testBody: GameTestScope.(Dependencies) -> Unit,
+    ) =
         runInjectedGameTest(
             Dependencies::class,
             TestModule,
@@ -790,6 +917,8 @@ class AncientSpellsTest {
             PlayerHitScript::class,
             FreezeScript::class,
             WeaponAttackStylesScript::class,
+            SpellbookSwap::class,
+            *extraScripts,
         ) { deps ->
             for (map in deps.maps) {
                 with(map) { deps.repo.register(deps.spellManager) }
@@ -823,6 +952,7 @@ class AncientSpellsTest {
             install(SpellAttacksModule())
             bind(SpellAttackRegistry::class.java).`in`(Scopes.SINGLETON)
             bind(AttackStyles::class.java).`in`(Scopes.SINGLETON)
+            bind(AttackTypes::class.java).`in`(Scopes.SINGLETON)
             bind(ComboRuneRepository::class.java).`in`(Scopes.SINGLETON)
             bind(CompactRuneRepository::class.java).`in`(Scopes.SINGLETON)
             bind(FakeRuneRepository::class.java).`in`(Scopes.SINGLETON)

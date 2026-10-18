@@ -26,6 +26,7 @@ import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.back
@@ -33,6 +34,7 @@ import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.route.RayCastValidator
@@ -51,6 +53,7 @@ import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneGrid
 import org.rsmod.map.zone.ZoneKey
@@ -59,6 +62,44 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 class BlackChinchompaTest {
+    @Test
+    fun GameTestState.`elite void medium fuse hits 28 with 112 ranged rigour and 44 strength`() =
+        runChinchompaTest { deps ->
+            val primary = spawnPrimary()
+            val equipment =
+                mapOf(
+                    Wearpos.Hat to objs.void_ranger_helm,
+                    Wearpos.Torso to objs.elite_void_top,
+                    Wearpos.Legs to objs.elite_void_robe,
+                    Wearpos.Hands to objs.void_gloves,
+                    Wearpos.Front to objs.necklace_of_anguish,
+                    Wearpos.Ring to objs.venator_ring,
+                )
+            for ((slot, obj) in equipment) player.worn[slot.slot] = InvObj(obj)
+            player.worn[Wearpos.LeftHand.slot] =
+                InvObj(deps.objTypes.values.first { it.internalName == "odium_ward" })
+            player.setCurrentLevel(stats.ranged, 112)
+            VarPlayerIntMapSetter.set(player, varbits.rigour, 1)
+            assertEquals(44, deps.bonuses.rangedStrengthBonus(player))
+            var maxHit = 0
+            player.withProtectedAccess {
+                maxHit =
+                    deps.manager.calculateRangedMaxHit(
+                        this,
+                        primary,
+                        RangedAttackType.Heavy,
+                        RangedAttackStyle.Rapid,
+                        1.0,
+                        0,
+                    )
+            }
+            assertEquals(28, maxHit)
+            random.next = 0
+            random.then = 28
+            shoot(deps, primary)
+            assertEquals(28, primary.pendingHits().single().first.damage)
+        }
+
     @ParameterizedTest
     @CsvSource("1, 0", "1, 9999", "9, 0", "9, 9999", "10, 0", "10, 9999")
     fun `each throw plays one explosion at the primary tile when the projectile lands`(

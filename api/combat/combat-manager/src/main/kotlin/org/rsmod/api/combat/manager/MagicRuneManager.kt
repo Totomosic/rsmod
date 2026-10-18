@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import kotlin.collections.any
 import kotlin.contracts.contract
 import org.rsmod.api.combat.commons.magic.MagicSpell
+import org.rsmod.api.combat.commons.magic.MagicSpellCast
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.objs
@@ -21,6 +22,7 @@ import org.rsmod.api.spells.runes.fake.FakeRuneRepository
 import org.rsmod.api.spells.runes.staves.StaffSubstituteRepository
 import org.rsmod.api.spells.runes.subs.RuneSubstituteRepository
 import org.rsmod.api.spells.runes.unlimited.UnlimitedRuneRepository
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.isAnyType
@@ -41,6 +43,7 @@ constructor(
     private val unlimited: UnlimitedRuneRepository,
     private val staffSubs: StaffSubstituteRepository,
     private val runeSubs: RuneSubstituteRepository,
+    private val eventBus: EventBus,
 ) {
     private val Player.spellbook by enumVarBit<Spellbook>(varbits.spellbook)
 
@@ -67,7 +70,11 @@ constructor(
         if (accessFailure != null) {
             return accessFailure
         }
-        return delReqs(player, spell)
+        val result = delReqs(player, spell)
+        if (result is CastResult.Success) {
+            eventBus.publish(MagicSpellCast(player, spell.spellbook))
+        }
+        return result
     }
 
     /**

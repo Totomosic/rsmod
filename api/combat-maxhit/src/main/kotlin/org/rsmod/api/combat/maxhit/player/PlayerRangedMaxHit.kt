@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.maxhit.player
 
+import kotlin.math.roundToInt
 import org.rsmod.api.combat.maxhit.safePercentScale
 import org.rsmod.api.combat.maxhit.scaleByPercent
 
@@ -37,7 +38,8 @@ public object PlayerRangedMaxHit {
         require(voidBonus >= 1.0) { "Void bonus must be greater or equal to 1." }
 
         val prayerPercent = safePercentScale(prayerBonus)
-        val voidPercent = safePercentScale(voidBonus)
+        // Elite Void's 12.5% bonus needs tenths of a percent before flooring the level.
+        val voidPermille = (voidBonus * 1000).roundToInt()
 
         var effectiveLevel = visibleRangedLvl
 
@@ -51,7 +53,7 @@ public object PlayerRangedMaxHit {
         }
 
         effectiveLevel += styleBonus
-        effectiveLevel = scaleByPercent(effectiveLevel, voidPercent)
+        effectiveLevel = (effectiveLevel * voidPermille) / 1000
         return effectiveLevel
     }
 }

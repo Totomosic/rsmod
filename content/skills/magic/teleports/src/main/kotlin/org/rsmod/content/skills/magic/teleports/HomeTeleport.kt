@@ -2,6 +2,9 @@ package org.rsmod.content.skills.magic.teleports
 
 import jakarta.inject.Inject
 import org.rsmod.api.area.checker.WildernessArea
+import org.rsmod.api.combat.commons.magic.MagicSpellCast
+import org.rsmod.api.combat.commons.magic.Spellbook
+import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.output.clearMapFlag
 import org.rsmod.api.player.protect.ProtectedAccess
@@ -49,6 +52,7 @@ class HomeTeleport @Inject constructor(private val protectedAccess: ProtectedAcc
 internal data class HomeTeleportCast(val stage: Int, val start: Int)
 
 internal fun ProtectedAccess.homeTeleport() {
+    if (player.vars[varbits.spellbook] != Spellbook.Standard.varValue) return
     if (player.inRecentCombat(mapClock)) {
         mes(RECENT_COMBAT_MESSAGE)
         return
@@ -59,6 +63,7 @@ internal fun ProtectedAccess.homeTeleport() {
         return
     }
     // Casting stops the player where they stand; any other pending weak action is replaced.
+    publish(MagicSpellCast(player, Spellbook.Standard))
     player.abortRoute()
     player.clearMapFlag()
     clearWeakQueue(home_teleport_queues.cast)
