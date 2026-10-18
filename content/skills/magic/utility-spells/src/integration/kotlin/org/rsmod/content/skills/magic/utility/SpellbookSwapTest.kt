@@ -15,8 +15,11 @@ import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.script.onAiOpPlayer2
+import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
@@ -33,6 +36,7 @@ import org.rsmod.api.spells.runes.subs.RuneSubstituteScript
 import org.rsmod.api.spells.runes.unlimited.UnlimitedRuneRepository
 import org.rsmod.api.spells.runes.unlimited.UnlimitedRuneScript
 import org.rsmod.api.testing.GameTestState
+import org.rsmod.api.testing.factory.locTypeFactory
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.content.skills.magic.teleports.HomeTeleport
@@ -40,6 +44,8 @@ import org.rsmod.content.skills.magic.teleports.LUMBRIDGE_HOME
 import org.rsmod.content.skills.magic.teleports.home_teleport_components
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.SessionStateEvent
+import org.rsmod.game.entity.util.EntityFaceAngle
+import org.rsmod.game.entity.util.EntityFaceTarget
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.interf.IfButtonOp
 import org.rsmod.map.CoordGrid
@@ -133,23 +139,140 @@ class SpellbookSwapTest {
             assertEquals(destination, player.coords)
         }
 
-    @Test
-    fun GameTestState.`an existing noncombat NPC action resumes after SBS`() =
-        runSwapTest(NpcAction::class) {
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `new red x stays still and faces its NPC throughout SBS even after previous movement`(
+        walking: Boolean,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(NpcAction::class) {
+            player.teleport(CoordGrid(0, 1, 1, 3, 3))
             val npc = spawnNpc(player.coords.translateX(6), actionTarget)
+            if (walking) player.moveGameClick(player.coords.translateZ(6))
+            advance(ticks = 1)
+            val start = player.coords
+            player.opNpc1(npc)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            repeat(3) {
+                advance(ticks = 1)
+                assertEquals(start, player.coords)
+                assertNotNull(player.interaction)
+                assertEquals(EntityFaceTarget(npc), player.faceEntity)
+                assertMessageNotSent("Action completed.")
+            }
+            advanceUntil({ player.interaction == null }, timeoutTicks = 10)
+            assertMessageSent("Action completed.")
+        }
+
+    @Test
+    fun GameTestState.`a red x remains active against an overlapping NPC throughout SBS`() =
+        runSwapTest(BarrierAction::class, NpcAttacker::class) {
+            player.teleport(CoordGrid(0, 1, 1, 3, 3))
+            val barrier = placeMapLoc(player.coords.translateX(6), barrierTarget)
+            advance(ticks = 1)
+            val start = player.coords
+            val npc = spawnNpc(start, attackerTarget)
+            npc.opPlayer2(player)
+            player.opLoc1(barrier)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            repeat(3) {
+                advance(ticks = 1)
+                assertEquals(start, player.coords)
+                assertEquals(start, npc.coords)
+                assertMessageNotSent("Enemy attacked.")
+                assertNotNull(player.interaction)
+            }
+        }
+
+    @Test
+    fun GameTestState.`an existing red x moves to its NPC during SBS but waits to interact`() =
+        runSwapTest(NpcAction::class) {
+            player.teleport(CoordGrid(0, 1, 1, 3, 3))
+            val npc = spawnNpc(player.coords.translateX(3), actionTarget)
             advance(ticks = 1)
             player.opNpc1(npc)
             advance(ticks = 1)
-            assertNotNull(player.interaction)
             val castPosition = player.coords
             player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
-            advance(ticks = 3)
-            assertEquals(castPosition, player.coords)
+            advance(ticks = 1)
+            assertNotEquals(castPosition, player.coords)
+            val arrival = player.coords
+            repeat(2) {
+                assertNotNull(player.interaction)
+                assertEquals(EntityFaceTarget(npc), player.faceEntity)
+                assertMessageNotSent("Action completed.")
+                advance(ticks = 1)
+                assertEquals(arrival, player.coords)
+            }
             assertMessageNotSent("Action completed.")
             advance(ticks = 1)
-            assertNotNull(player.interaction)
-            advanceUntil({ player.interaction == null }, timeoutTicks = 10)
             assertMessageSent("Action completed.")
+            assertNull(player.interaction)
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [1, 6])
+    fun `new red x faces its world object every tick and cannot pass during SBS`(
+        distance: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(BarrierAction::class) {
+            player.teleport(CoordGrid(0, 1, 1, 3, 3))
+            val barrier = placeMapLoc(player.coords.translateX(distance), barrierTarget)
+            val faces = mutableListOf<EntityFaceAngle>()
+            eventBus.subscribeUnbound(GameLifecycle.UpdateInfo::class.java) {
+                faces += player.pendingFaceAngle
+            }
+            advance(ticks = 1)
+            faces.clear()
+            val start = player.coords
+            val expectedAngle =
+                EntityFaceAngle.fromOrNull(
+                    player.calculateAngle(
+                        barrier.coords,
+                        barrier.adjustedWidth,
+                        barrier.adjustedLength,
+                    )
+                )
+            player.opLoc1(barrier)
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            repeat(3) {
+                advance(ticks = 1)
+                assertEquals(start, player.coords)
+                assertNotNull(player.interaction)
+                assertMessageNotSent("Passed barrier.")
+            }
+            assertEquals(List(3) { expectedAngle }, faces)
+            advanceUntil({ player.interaction == null }, timeoutTicks = 10)
+            assertMessageSent("Passed barrier.")
+            assertEquals(barrier.coords.translateX(1), player.coords)
+        }
+
+    @Test
+    fun GameTestState
+        .`an existing red x reaches a barrier during SBS but passes only afterwards`() =
+        runSwapTest(BarrierAction::class) {
+            player.teleport(CoordGrid(0, 1, 1, 3, 3))
+            val barrier = placeMapLoc(player.coords.translateX(3), barrierTarget)
+            advance(ticks = 1)
+            player.opLoc1(barrier)
+            advance(ticks = 1)
+            val castPosition = player.coords
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            advance(ticks = 1)
+            assertNotEquals(castPosition, player.coords)
+            val arrival = player.coords
+            repeat(2) {
+                assertNotNull(player.interaction)
+                assertMessageNotSent("Passed barrier.")
+                advance(ticks = 1)
+                assertEquals(arrival, player.coords)
+            }
+            assertMessageNotSent("Passed barrier.")
+            advance(ticks = 1)
+            assertMessageSent("Passed barrier.")
+            assertEquals(barrier.coords.translateX(1), player.coords)
+            assertNull(player.interaction)
         }
 
     @Test
@@ -401,6 +524,21 @@ class SpellbookSwapTest {
         }
     }
 
+    class NpcAttacker : PluginScript() {
+        override fun ScriptContext.startup() {
+            onAiOpPlayer2(attackerTarget) { it.target.mes("Enemy attacked.") }
+        }
+    }
+
+    class BarrierAction : PluginScript() {
+        override fun ScriptContext.startup() {
+            onOpLoc1(barrierTarget) {
+                mes("Passed barrier.")
+                teleport(it.loc.coords.translateX(1))
+            }
+        }
+    }
+
     private object TestModule : AbstractModule() {
         override fun configure() {
             install(MagicSpellModule())
@@ -415,6 +553,19 @@ class SpellbookSwapTest {
 
     private companion object {
         private var Player.swapActive by intVarp(spellbook_swap_varps.active)
+        private val attackerTarget =
+            npcTypeFactory.create(id = 65533) {
+                name = "SBS enemy"
+                size = 1
+                op[1] = "Attack"
+            }
+        private val barrierTarget =
+            locTypeFactory.create {
+                name = "SBS test barrier"
+                op[0] = "Pass"
+                width = 1
+                length = 1
+            }
         private val actionTarget =
             npcTypeFactory.create(id = 65534) {
                 name = "SBS action target"

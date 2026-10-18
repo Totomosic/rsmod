@@ -17,6 +17,9 @@ public sealed class Interaction(
     public var apRangeCalled: Boolean = false,
     public var interacted: Boolean = false,
 ) {
+    /** Whether this interaction has had a player processing turn outside a stall. */
+    public var hasStarted: Boolean = false
+
     override fun toString(): String =
         "Interaction(" +
             "hasOpTrigger=$hasOpTrigger, " +

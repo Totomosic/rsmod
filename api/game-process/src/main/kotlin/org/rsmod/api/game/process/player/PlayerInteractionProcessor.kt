@@ -67,6 +67,13 @@ constructor(
         val followOp = interaction is InteractionPlayerOp && interaction.isFollowOp()
         var interacted = false
 
+        if (player.isDelayed) {
+            if (interaction != null) player.faceInteraction(interaction)
+            // A new red-x keeps its target but cannot start moving until the stall ends.
+            // An interaction from an earlier turn can keep approaching while access is blocked.
+            if (interaction?.hasStarted != true) return
+        }
+
         if (interaction != null && !player.isAccessProtected) {
             val cancel = player.shouldCancelInteraction(interaction)
             if (cancel) {
@@ -117,6 +124,17 @@ constructor(
         // stored locally in this function. This allows for newly set interactions to not get
         // cleared if the local reference has "completed."
         player.clearFinishedInteraction()
+        // Include replacement interactions, such as combat's continuation for the next turn.
+        player.interaction?.hasStarted = true
+    }
+
+    private fun Player.faceInteraction(interaction: Interaction) {
+        when (interaction) {
+            is InteractionLoc -> faceLoc(interaction.target)
+            is InteractionNpc -> faceNpc(interaction.target)
+            is InteractionPlayer -> facePlayer(interaction.target)
+            is InteractionObj -> faceSquare(interaction.target.coords)
+        }
     }
 
     private fun Player.preMovementInteraction(interaction: Interaction): Unit =

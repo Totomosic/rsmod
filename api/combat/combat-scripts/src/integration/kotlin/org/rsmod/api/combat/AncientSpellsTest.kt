@@ -197,6 +197,40 @@ class AncientSpellsTest {
             assertEquals(listOf(npc, npc, npc), attacks)
         }
 
+    @Test
+    fun GameTestState
+        .`an existing attack approaches during SBS but attacks only after the stall`() =
+        runAncientTest(PvNCombatScript::class, WeaponAttackTypesScript::class) {
+            val npc = spawnNpc(CoordGrid(0, 1, 1, 6, 3), iceTarget())
+            player.placeAt(npc.coords.translateZ(3))
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, 2)
+            player.ifOpenOverlay(interfaces.magic_spellbook, components.toplevel_target_side6)
+            val owner = player
+            val attacks = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
+                if (player === owner) attacks += target
+            }
+            advance(ticks = 25)
+            player.opNpc2(npc)
+            advance(ticks = 1)
+            assertTrue(attacks.isEmpty())
+            val castPosition = player.coords
+            player.ifButton(spellbook_swap_components.cast, op = IfButtonOp.Op2)
+            advance(ticks = 1)
+            assertNotEquals(castPosition, player.coords)
+            val arrival = player.coords
+            repeat(2) {
+                assertTrue(attacks.isEmpty())
+                assertNotNull(player.interaction)
+                advance(ticks = 1)
+                assertEquals(arrival, player.coords)
+            }
+            assertTrue(attacks.isEmpty())
+            advance(ticks = 1)
+            assertEquals(listOf(npc), attacks)
+            assertTrue(npc.pendingHits().isNotEmpty())
+        }
+
     @ParameterizedTest
     @ValueSource(ints = [1, 6])
     fun `attack clicked before SBS in the same tick resumes when the stall ends`(

@@ -79,13 +79,7 @@ constructor(
     private suspend fun ProtectedAccess.cast(book: Spellbook) {
         val spell = checkNotNull(spells.getObjSpell(objs.spell_spellbook_swap))
         if (runes.attemptCast(player, spell) !is MagicRuneManager.CastResult.Success) return
-        // Pause both a newly requested route and an action already in progress.
-        val pendingRoute = player.routeRequest
-        val pendingWaypoints = player.routeDestination.toList()
-        val pendingInteraction = player.interaction
-        val pendingSpeed = player.tempMoveSpeed
-        player.clearInteraction()
-        player.abortRoute()
+        // The engine keeps red-x targets live and distinguishes new and ongoing approaches.
         anim(spellbook_swap_seqs.cast)
         spotanim(spellbook_swap_spots.cast)
         delay(3)
@@ -94,10 +88,6 @@ constructor(
         player.swapActive = 1
         player.spellbook = book
         softTimer(spellbook_swap_timers.expire, 200) // Two minutes at 600 ms per tick.
-        player.routeRequest = pendingRoute
-        player.routeDestination.addAll(pendingWaypoints)
-        player.interaction = pendingInteraction
-        player.tempMoveSpeed = pendingSpeed
     }
 
     private fun Player.returnToLunar() {
