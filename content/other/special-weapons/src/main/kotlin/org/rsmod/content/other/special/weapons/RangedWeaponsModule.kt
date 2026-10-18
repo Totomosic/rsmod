@@ -4,6 +4,7 @@ import org.rsmod.api.specials.SpecialAttackMap
 import org.rsmod.api.weapons.WeaponMap
 import org.rsmod.content.other.special.weapons.ranged.BlackChinchompaWeapons
 import org.rsmod.content.other.special.weapons.ranged.DarkBowWeapons
+import org.rsmod.content.other.special.weapons.ranged.TonalzticsOfRalosWeapons
 import org.rsmod.content.other.special.weapons.ranged.ToxicBlowpipeWeapons
 import org.rsmod.plugin.module.PluginModule
 
@@ -12,6 +13,7 @@ class RangedWeaponsModule : PluginModule() {
         addSetBinding<WeaponMap>(BlackChinchompaWeapons::class.java)
         addSetBinding<WeaponMap>(DarkBowWeapons::class.java)
         addSetBinding<WeaponMap>(ToxicBlowpipeWeapons::class.java)
+        addSetBinding<WeaponMap>(TonalzticsOfRalosWeapons::class.java)
         addSetBinding<SpecialAttackMap>(ToxicBlowpipeWeapons::class.java)
     }
 }

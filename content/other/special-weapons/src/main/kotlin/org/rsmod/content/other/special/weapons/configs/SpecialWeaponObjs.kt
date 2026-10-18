@@ -10,6 +10,7 @@ typealias special_weapon_objs = SpecialWeaponObjs
 
 object SpecialWeaponObjs : ObjReferences() {
     val sulphur_blades = find("sulphur_blades")
+    val tonalztics_of_ralos_charged = find("tonalztics_of_ralos_charged")
     val eye_of_ayak = find("eye_of_ayak")
     val eye_of_ayak_uncharged = find("eye_of_ayak_uncharged")
     val demon_tear = find("demon_tear")
