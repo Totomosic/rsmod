@@ -37,6 +37,7 @@ class NylocasOccupancyTest {
         val raid: TheatreRaid,
         val bounds: BoundValidator,
         val collision: CollisionFlagMap,
+        val behaviour: NylocasBehaviour,
     )
 
     @Test
@@ -261,7 +262,7 @@ class NylocasOccupancyTest {
 
     @ParameterizedTest
     @CsvSource("false", "true")
-    fun `removing or killing a big preserves small reservations in its other footprint tiles`(
+    fun `big cleanup clears neighbouring reservations before split births reserve their anchors`(
         kill: Boolean,
         state: GameTestState,
     ) =
@@ -291,8 +292,47 @@ class NylocasOccupancyTest {
             }
             for (small in smalls) {
                 assertTrue(small.isSlotAssigned && small.hitpoints > 0)
-                assertNotEquals(0, deps.collision[small.coords] and CollisionFlag.BLOCK_NPCS)
+                val splitBirth = kill && small.coords == anchor.translate(1, 1)
+                assertEquals(
+                    splitBirth,
+                    deps.collision[small.coords] and CollisionFlag.BLOCK_NPCS != 0,
+                )
             }
+        }
+
+    @Test
+    fun GameTestState.`a big removal admits a later arrival onto a living small anchor`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            wave(NylocasPillar.SouthEast),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            // Blert 1073635f: 63282 holds from172, 62545 disappears183,
+            // and 63412 walks onto the incumbent at193. No incumbent death.
+            val room = start(deps)
+            val big = enter(deps, room)
+            big.telejump(room.normal[CoordGrid(3298, 4243, 0)])
+            val incumbent = stationary(deps, room, 3299, 4243)
+            val spawn = NylocasSpawn(NylocasSize.Small, NylocasStyle.Melee, NylocasPillar.SouthEast)
+            val incoming =
+                spawnNpc(
+                    room.normal[NylocasSlot.SouthEast.entry],
+                    deps.npcTypes[nylocas_npcs.small_melee],
+                ) {
+                    mode = NpcMode.None
+                    setHunt(0)
+                    deps.behaviour.add(this, room, NylocasSlot.SouthEast, spawn, 2)
+                }
+            advance(ticks = 2)
+            incoming.telejump(room.normal[CoordGrid(3297, 4243, 0)])
+            deps.npcRepo.del(big, Int.MAX_VALUE)
+            assertEquals(0, deps.collision[incumbent.coords] and CollisionFlag.BLOCK_NPCS)
+            advance(ticks = 4)
+            assertEquals(incumbent.coords, incoming.coords)
+            assertTrue(incumbent.isSlotAssigned && incumbent.hitpoints > 0)
+            advance(ticks = 3)
+            assertEquals(incumbent.coords, incoming.coords)
         }
 
     private fun occupied(deps: Dependencies, anchor: CoordGrid): Set<CoordGrid> = buildSet {

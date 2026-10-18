@@ -34,10 +34,12 @@ import org.rsmod.game.entity.PathingEntityAvatar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcMode
+import org.rsmod.game.entity.npc.NpcStateEvents
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.interact.InteractionNpc
 import org.rsmod.game.inv.isAnyType
 import org.rsmod.game.map.collision.get
+import org.rsmod.game.map.collision.remove
 import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.region.Region
@@ -46,7 +48,6 @@ import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.ScriptContext
 import org.rsmod.routefinder.Route
 import org.rsmod.routefinder.collision.CollisionFlagMap
-import org.rsmod.routefinder.collision.CollisionStrategy
 import org.rsmod.routefinder.flag.CollisionFlag
 
 @Singleton
@@ -74,6 +75,16 @@ constructor(
 
     fun register(context: ScriptContext) =
         with(context) {
+            onEvent<NpcStateEvents.Delete> {
+                val state = active[npc] ?: return@onEvent
+                if (state.pillar == null || state.spawn.size != NylocasSize.Big) return@onEvent
+                // Ordinary bigs move/reserve at their SW anchor, but removal can
+                // leave living neighbours nonblocking across the native footprint.
+                // Blert 1073635f: big62545 removed183, small63282 holds, arrival193.
+                for (x in 0 until npc.size) for (z in 0 until npc.size) {
+                    collision.remove(npc.coords.translate(x, z), CollisionFlag.BLOCK_NPCS)
+                }
+            }
             for (size in NylocasSize.entries) {
                 for (style in NylocasStyle.entries) {
                     for (type in
@@ -235,7 +246,7 @@ constructor(
                     else -> null
                 }
             val entered = entry == null
-            npc.moveRestrict = if (entered) MoveRestrict.Normal else MoveRestrict.BlockedNormal
+            npc.moveRestrict = if (entered) MoveRestrict.PassThru else MoveRestrict.BlockedNormal
             npcRepo.add(npc, Int.MAX_VALUE)
             npc.respawns = false
             active[npc] =
@@ -294,7 +305,10 @@ constructor(
                 return
             }
             state.entered = true
-            npc.moveRestrict = MoveRestrict.Normal
+            // Pillar AI validates NPC collision at the destination itself. Shared
+            // movement must not reapply NPC blockers to diagonal side tiles.
+            npc.moveRestrict =
+                if (state.pillar != null) MoveRestrict.PassThru else MoveRestrict.Normal
             updateAppearance(npc, state)
         }
         val pillar = state.pillar
@@ -374,88 +388,89 @@ constructor(
     private fun approachPillar(npc: Npc, state: State, pillar: NpcAvatar) {
         if (npc.coords in state.pillarTiles) return
         val centre = state.region.normal[NylocasRoom.arena]
-        val faces =
-            state.pillarTiles.groupBy { tile ->
-                tile.x + npc.size == pillar.coords.x || tile.x == pillar.coords.x + pillar.size
-            }
-        // Replays approach the nearer face but favour its outer end, rather than
-        // the individually nearest contact tile. Align bigs' full footprint with
-        // that endpoint; keep other contact anchors as fallbacks.
-        val available =
-            faces.entries
-                .sortedBy { (_, tiles) -> tiles.minOf { npc.coords.chebyshevDistance(it) } }
-                .flatMap { (vertical, tiles) ->
-                    tiles.sortedBy { tile ->
-                        if (vertical) {
-                            val outer =
-                                if (pillar.coords.z > centre.z) pillar.coords.z + 2 - npc.size
-                                else pillar.coords.z
-                            kotlin.math.abs(tile.z - outer)
-                        } else {
-                            val outer =
-                                if (pillar.coords.x > centre.x) pillar.coords.x + 2 - npc.size
-                                else pillar.coords.x
-                            kotlin.math.abs(tile.x - outer)
-                        }
-                    }
-                }
-                .filter { canOccupy(npc, it) }
-        // Remove only our southwest reservation; overlapping neighbours keep theirs.
-        npc.removeBlockWalkCollision(collision, npc.coords)
-        try {
-            for (tile in available) {
-                val route = routes.create(movementAvatar(npc), tile, PillarCollision)
-                if (route.success) {
-                    state.waitingReturn = null
-                    follow(npc, route)
-                    return
-                }
-            }
-            if (state.waitingReturn == null) {
-                val approach = routes.create(movementAvatar(npc), pillar, PillarCollision)
-                if (
-                    approach.isNotEmpty() &&
-                        state.pillarTiles.minOf { npc.coords.chebyshevDistance(it) } > 1
-                ) {
-                    follow(npc, approach)
-                    return
-                }
-            }
-        } finally {
-            npc.addBlockWalkCollision(collision, npc.coords)
-        }
-        pace(npc, state)
-    }
-
-    private fun canOccupy(npc: Npc, tile: CoordGrid): Boolean =
-        collision[tile] and TERRAIN_BLOCKERS == 0 &&
-            (tile == npc.coords || collision[tile] and CollisionFlag.BLOCK_NPCS == 0)
-
-    private fun pace(npc: Npc, state: State) {
-        fun canStep(tile: CoordGrid): Boolean =
-            canOccupy(npc, tile) &&
-                steps.validated(npc.coords, tile, npc.collisionSize, CollisionFlag.BLOCK_NPCS) ==
-                    tile
-
-        val back = state.waitingReturn
-        if (back != null && back != npc.coords && canStep(back)) {
-            npc.walk(back)
+        // Aim at the pillar's outer corner, aligned to the native footprint.
+        // This is a direction reference inside the pillar; contact stops us first.
+        val goal =
+            pillar.coords.translate(
+                if (pillar.coords.x > centre.x) 2 - npc.size else 0,
+                if (pillar.coords.z > centre.z) 2 - npc.size else 0,
+            )
+        // Take a reachable adjacent contact before falling back to another
+        // component of the preferred direction. This lets an inner slot fill
+        // when the outer endpoint is occupied, without searching a distant face.
+        val adjacent =
+            state.pillarTiles
+                .filter { npc.coords.chebyshevDistance(it) == 1 }
+                .sortedBy { kotlin.math.abs(it.x - goal.x) + kotlin.math.abs(it.z - goal.z) }
+                .firstOrNull { pillarStep(npc, it) == it }
+        if (adjacent != null) {
+            npc.walk(adjacent)
             return
         }
-        state.waitingReturn = null
-        val next =
-            listOf(
-                    npc.coords.translate(-1, 0),
-                    npc.coords.translate(1, 0),
-                    npc.coords.translate(0, -1),
-                    npc.coords.translate(0, 1),
+        while (state.terrainRoute.firstOrNull() == npc.coords) state.terrainRoute.removeFirst()
+        val destination = state.terrainRoute.firstOrNull() ?: goal
+        val direct = pillarStep(npc, destination)
+        if (direct != CoordGrid.NULL) {
+            npc.walk(direct)
+            return
+        }
+        // Detour around static terrain, but do not chase another face merely
+        // because NPCs occupy this approach. A moveNear alternative is not contact.
+        if (
+            state.terrainRoute.isEmpty() &&
+                steps.validated(npc.coords, goal, npc.collisionSize) == CoordGrid.NULL
+        ) {
+            val contact =
+                state.pillarTiles.minWithOrNull(
+                    compareBy<CoordGrid> { npc.coords.chebyshevDistance(it) }
+                        .thenBy { it.chebyshevDistance(goal) }
                 )
-                .sortedByDescending { tile ->
-                    state.pillarTiles.minOf { tile.chebyshevDistance(it) }
+            if (contact != null) {
+                val route = routes.create(movementAvatar(npc), contact)
+                if (route.success && !route.alternative && route.isNotEmpty()) {
+                    state.terrainRoute.addAll(route.map { CoordGrid(it.x, it.z, it.level) })
+                    val first = state.terrainRoute.first()
+                    val step = pillarStep(npc, first)
+                    if (step != CoordGrid.NULL) {
+                        npc.walk(step)
+                        return
+                    }
                 }
-                .firstOrNull { canStep(it) } ?: return
-        state.waitingReturn = npc.coords
+            }
+        }
+
+        val retries = buildList {
+            for (x in -1..1) for (z in -1..1) {
+                if (x == 0 && z == 0) continue
+                val tile = npc.coords.translate(x, z)
+                if (pillarStep(npc, tile) == tile) {
+                    add(tile)
+                }
+            }
+        }
+        // Recordings establish mixed local retries, not their exact selector.
+        // Sample legal neighbours rather than imposing an alternating pace timer.
+        val next = random.pickOrNull(retries) ?: return
         npc.walk(next)
+    }
+
+    private fun pillarStep(npc: Npc, destination: CoordGrid): CoordGrid {
+        val dx = (destination.x - npc.coords.x).compareTo(0)
+        val dz = (destination.z - npc.coords.z).compareTo(0)
+        // Keep terrain corner checks, but NPCs only obstruct the destination.
+        // Blert 1073635f: small61705 moves (3298,4243)->(3299,4244) at89
+        // beside stationary small61590 at (3299,4243).
+        val candidates =
+            listOf(
+                npc.coords.translate(dx, dz),
+                npc.coords.translate(dx, 0),
+                npc.coords.translate(0, dz),
+            )
+        return candidates.firstOrNull { tile ->
+            tile != npc.coords &&
+                collision[tile] and CollisionFlag.BLOCK_NPCS == 0 &&
+                steps.validated(npc.coords, tile, npc.collisionSize) == tile
+        } ?: CoordGrid.NULL
     }
 
     private fun validTarget(player: Player, region: Region): Boolean {
@@ -510,16 +525,11 @@ constructor(
         var entered: Boolean = false,
         var target: Player? = null,
         var nextAttack: Int = 0,
-        var waitingReturn: CoordGrid? = null,
+        val terrainRoute: ArrayDeque<CoordGrid> = ArrayDeque(),
         var expiring: Boolean = false,
         // Presence records permanent nulling; the value is the last suppressed/played cue tick.
         val nullFeedbackCycles: MutableMap<Long, Int> = mutableMapOf(),
     )
-
-    private object PillarCollision : CollisionStrategy {
-        override fun canMove(tileFlag: Int, blockFlag: Int): Boolean =
-            CollisionStrategy.Normal.canMove(tileFlag, blockFlag or CollisionFlag.BLOCK_NPCS)
-    }
 
     private companion object {
         const val EXPLOSION_RADIUS = 1

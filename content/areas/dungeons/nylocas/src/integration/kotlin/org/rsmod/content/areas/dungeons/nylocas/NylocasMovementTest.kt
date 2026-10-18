@@ -116,7 +116,7 @@ class NylocasMovementTest {
 
     @ParameterizedTest
     @EnumSource(NylocasPillar::class)
-    fun `a fifth nylo paces until one of the four pillar tiles is vacated`(
+    fun `a full pillar causes local retries until an approached contact is vacated`(
         pillar: NylocasPillar,
         state: GameTestState,
     ) {
@@ -130,10 +130,15 @@ class NylocasMovementTest {
             val room = start(deps)
             advance(ticks = 32)
             val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
-            val settled = deps.npcs.filter { it.coords in tiles }
-            assertEquals(4, settled.size)
+            // Arrange occupancy explicitly: recordings do not promise that five
+            // arrivals from one lane globally fill all four faces' contact tiles.
+            val actors = deps.npcs.toList()
+            val settled = actors.take(4)
+            settled.zip(tiles).forEach { (npc, tile) -> npc.telejump(tile) }
+            val waiting = actors.last()
+            waiting.telejump(waitingTile(room, pillar))
+            settled.forEach { it.addBlockWalkCollision(deps.collision, it.coords) }
             assertEquals(tiles, settled.map { it.coords }.toSet())
-            val waiting = deps.npcs.single { it !in settled }
             val positions =
                 List(10) {
                     val coords = waiting.coords
@@ -142,16 +147,11 @@ class NylocasMovementTest {
                     advance()
                     coords
                 }
-            assertEquals(2, positions.toSet().size)
+            assertTrue(positions.toSet().size >= 2)
             for (i in 1 until positions.size) {
                 val previous = positions[i - 1]
                 val current = positions[i]
-                assertEquals(
-                    1,
-                    kotlin.math.abs(current.x - previous.x) +
-                        kotlin.math.abs(current.z - previous.z),
-                )
-                if (i > 1) assertEquals(positions[i - 2], current)
+                assertTrue(previous.chebyshevDistance(current) <= 1)
             }
             val freed = settled.first().coords
             deps.npcRepo.del(settled.first(), Int.MAX_VALUE)
@@ -185,8 +185,11 @@ class NylocasMovementTest {
             val oldest = deps.npcs.single()
             advance(ticks = 43)
             val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
-            assertEquals(4, deps.npcs.count { it.coords in tiles })
-            val waiting = deps.npcs.single { it.coords !in tiles }
+            val actors = deps.npcs.toList()
+            actors.take(4).zip(tiles).forEach { (npc, tile) -> npc.telejump(tile) }
+            val waiting = actors.last()
+            waiting.telejump(waitingTile(room, pillar))
+            actors.take(4).forEach { it.addBlockWalkCollision(deps.collision, it.coords) }
             advanceUntil(predicate = { !oldest.isSlotAssigned }, timeoutTicks = 12)
             advance(ticks = 6)
             assertTrue(waiting.isSlotAssigned)
@@ -215,7 +218,7 @@ class NylocasMovementTest {
                 assertFalse(npc.coords in tiles)
                 advance()
             }
-            val freed = tiles.last()
+            val freed = tiles.minBy { npc.coords.chebyshevDistance(it) }
             deps.collision.remove(freed, CollisionFlag.BLOCK_NPCS)
             advance(ticks = 10)
             assertEquals(freed, npc.coords)
@@ -244,6 +247,104 @@ class NylocasMovementTest {
             val tiles = pillarTiles(pillar).map { room.normal[it] }.toSet()
             assertEquals(tiles, deps.npcs.filter { it.coords in tiles }.map { it.coords }.toSet())
         }
+    }
+
+    @Test
+    fun GameTestState
+        .`a crowded north approach retries locally with straight and diagonal steps`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    eastSouth =
+                        NylocasSpawn(NylocasSize.Big, NylocasStyle.Magic, NylocasPillar.SouthEast),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            // Blert 1073635f, big64113: the north anchors are occupied while
+            // west-face contacts remain available. It keeps retrying north.
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val npc = deps.npcs.single()
+            advance(ticks = 12)
+            npc.telejump(room.normal[CoordGrid(3300, 4246, 0)])
+            for (x in 3299..3301) deps.collision.add(
+                room.normal[CoordGrid(x, 4245, 0)],
+                CollisionFlag.BLOCK_NPCS,
+            )
+            val positions =
+                List(20) {
+                    val before = deps.regions.normalizeCoords(npc.coords)
+                    advance()
+                    assertTrue(deps.regions.normalizeCoords(npc.coords).z >= 4246)
+                    before
+                }
+            assertTrue(positions.zipWithNext().any { (a, b) -> a.x != b.x && a.z != b.z })
+            assertTrue(positions.zipWithNext().any { (a, b) -> a.x == b.x || a.z == b.z })
+            val freed = room.normal[CoordGrid(3300, 4245, 0)]
+            deps.collision.remove(freed, CollisionFlag.BLOCK_NPCS)
+            advance(ticks = 4)
+            assertEquals(freed, npc.coords)
+        }
+
+    @ParameterizedTest
+    @EnumSource(NylocasSize::class)
+    fun `pillar diagonals ignore neighbouring NPCs but respect terrain and destination reservations`(
+        size: NylocasSize,
+        state: GameTestState,
+    ) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            table(
+                NylocasWave(
+                    4,
+                    eastSouth = NylocasSpawn(size, NylocasStyle.Melee, NylocasPillar.SouthEast),
+                )
+            ),
+            NylocasEncounter::class,
+            TheatreRaid::class,
+        ) { deps ->
+            // Small61705, 1073635f ticks88-89; the size-two case exercises the
+            // same anchor rule while retaining native-size pillar contact.
+            val room = start(deps)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val npc = deps.npcs.single()
+            advance(ticks = 12)
+            val source = room.normal[CoordGrid(3299 - npc.size, 4243, 0)]
+            val corner = source.translate(1, 0)
+            val destination = source.translate(1, 1)
+            npc.telejump(source)
+            deps.collision.add(corner, CollisionFlag.BLOCK_NPCS or CollisionFlag.LOC)
+            advance()
+            assertNotEquals(destination, npc.coords)
+            npc.telejump(source)
+            deps.collision.remove(corner, CollisionFlag.LOC)
+            advance()
+            assertEquals(destination, npc.coords)
+            npc.telejump(source)
+            deps.collision.add(destination, CollisionFlag.BLOCK_NPCS)
+            advance()
+            assertNotEquals(destination, npc.coords)
+        }
+
+    private fun waitingTile(room: Region, pillar: NylocasPillar): CoordGrid {
+        val contact = pillarTiles(pillar).first()
+        val dx =
+            when {
+                contact.x < pillar.source.x -> -1
+                contact.x > pillar.source.x + 1 -> 1
+                else -> 0
+            }
+        val dz =
+            when {
+                contact.z < pillar.source.z -> -1
+                contact.z > pillar.source.z + 1 -> 1
+                else -> 0
+            }
+        return room.normal[contact.translate(dx, dz)]
     }
 
     private fun pillarTiles(pillar: NylocasPillar): List<CoordGrid> =
