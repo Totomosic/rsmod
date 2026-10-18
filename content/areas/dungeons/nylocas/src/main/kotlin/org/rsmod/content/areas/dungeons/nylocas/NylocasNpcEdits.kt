@@ -15,6 +15,7 @@ internal object NylocasNpcEdits : NpcEditor() {
                     edit(type) {
                         param[params.attack_anim] = nylocas_seqs.attack(style)
                         param[params.death_anim] = nylocas_seqs.death(style)
+                        param[params.defend_sound] = NylocasSynths.defend
                     }
                 }
             }

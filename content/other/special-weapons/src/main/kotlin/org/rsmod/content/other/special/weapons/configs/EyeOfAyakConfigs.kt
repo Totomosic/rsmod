@@ -29,7 +29,8 @@ internal object EyeOfAyakProjBuilds : ProjAnimBuilder() {
             angle = 16
             lengthAdjustment = 5
             progress = 64
-            // floor((46 + 5 * distance) / 30) matches the Eye's 1/2-tick delay table.
+            // The Eye's table counts waiting ticks; damage applies on the next queue tick:
+            // 1 + floor((46 + 5 * distance) / 30), or 2 ticks at 1-2 tiles and 3 at 3-8.
             // https://oldschool.runescape.wiki/w/Hit_delay#Eye_of_Ayak
             stepMultiplier = 5
         }

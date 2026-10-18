@@ -138,7 +138,9 @@ class BlackChinchompaTest {
                         .flatMap { deps.zoneUpdates[it]?.toList().orEmpty() }
                         .filterIsInstance<SoundArea>()
                 assertEquals(2, sounds.size)
-                val launch = sounds.single { it.id == 359 }
+                // Player throws use throwingaxe (2706), not the creature's attack squeak (359).
+                assertTrue(sounds.none { it.id == 359 })
+                val launch = sounds.single { it.id == 2706 }
                 assertEquals(0, launch.delay)
                 assertEquals(1, launch.loops)
                 assertEquals(ZoneGrid.from(player.coords).x, launch.xInZone)

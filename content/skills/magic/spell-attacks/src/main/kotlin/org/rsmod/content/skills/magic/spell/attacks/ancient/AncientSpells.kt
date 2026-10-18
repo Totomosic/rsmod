@@ -121,7 +121,7 @@ constructor(
                     projTypes[projanims.magic_spell_low],
                     player.distanceTo(primary),
                 )
-            val hitDelay = ProjAnim.calculateHitDelay(clientDelay)
+            val hitDelay = ProjAnim.calculateMagicHitDelay(clientDelay)
             val spell = attack.spell.obj
             var totalRolledDamage = 0
 

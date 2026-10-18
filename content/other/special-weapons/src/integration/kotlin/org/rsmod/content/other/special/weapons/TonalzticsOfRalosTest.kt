@@ -53,7 +53,7 @@ import org.rsmod.plugin.scripts.PluginScript
 class TonalzticsOfRalosTest {
     @ParameterizedTest
     @CsvSource("1, false", "3, false", "5, false", "9, false", "1, true", "9, true")
-    fun `both hits land together two ticks after firing regardless of distance`(
+    fun `both hits land together one tick after firing regardless of distance`(
         distance: Int,
         playerTarget: Boolean,
         state: GameTestState,
@@ -85,15 +85,7 @@ class TonalzticsOfRalosTest {
             assertEquals(10923, player.pendingSequence.id)
             assertEquals(weapon, player.righthand)
             assertEquals(10, player.quiver?.count)
-            if (target is Npc) assertEquals(listOf(5 to 2, 7 to 2), target.pendingHits())
-            advance()
-            assertEquals(
-                startingHp,
-                when (target) {
-                    is Npc -> target.hitpoints
-                    is Player -> target.hitpoints
-                },
-            )
+            if (target is Npc) assertEquals(listOf(5 to 1, 7 to 1), target.pendingHits())
             advance()
             assertEquals(
                 startingHp - 12,
@@ -119,7 +111,7 @@ class TonalzticsOfRalosTest {
             shoot(deps, npc)
             val first = if (firstHits) 5 else 0
             val second = if (secondHits) 7 else 0
-            assertEquals(listOf(first to 2, second to 2), npc.pendingHits())
+            assertEquals(listOf(first to 1, second to 1), npc.pendingHits())
             assertEquals(beforeXp + (first + second) * 4, player.statMap.getXP(stats.ranged))
         }
 
@@ -146,7 +138,7 @@ class TonalzticsOfRalosTest {
                 forced = true
             }
             shoot(deps, npc)
-            assertEquals(List(2) { normalMax * 3 / 4 to 2 }, npc.pendingHits())
+            assertEquals(List(2) { normalMax * 3 / 4 to 1 }, npc.pendingHits())
         }
 
     @Test
@@ -179,7 +171,7 @@ class TonalzticsOfRalosTest {
                 forced = true
             }
             shoot(deps, npc)
-            assertEquals(List(2) { normalMax * 3 / 4 to 2 }, npc.pendingHits())
+            assertEquals(List(2) { normalMax * 3 / 4 to 1 }, npc.pendingHits())
             assertEquals(100, player.quiver?.count)
         }
 
@@ -194,7 +186,7 @@ class TonalzticsOfRalosTest {
         }
         shoot(deps, npc)
         assertEquals(listOf(HitType.Ranged, HitType.Ranged), styles)
-        assertEquals(listOf(0 to 2, 0 to 2), npc.pendingHits())
+        assertEquals(listOf(0 to 1, 0 to 1), npc.pendingHits())
     }
 
     @ParameterizedTest
@@ -213,16 +205,19 @@ class TonalzticsOfRalosTest {
             advance(ticks = 20)
             val attacks = mutableListOf<Int>()
             eventBus.subscribeUnbound(PlayerAttackTarget::class.java) { attacks += mapClock.cycle }
+            val startingHp = npc.hitpoints
             rollHits(true, true)
             player.opNpc2(npc)
             advance()
-            assertEquals(listOf(5 to 2, 7 to 2), npc.pendingHits())
+            assertEquals(listOf(5 to 1, 7 to 1), npc.pendingHits())
             assertEquals(interval, player.actionDelay - attacks.single())
+            advance()
+            assertEquals(startingHp - 12, npc.hitpoints)
             rollHits(true, true)
-            advance(ticks = interval)
+            advance(ticks = interval - 1)
             assertEquals(2, attacks.size)
             assertEquals(interval, attacks[1] - attacks[0])
-            assertEquals(listOf(5 to 2, 7 to 2), npc.pendingHits())
+            assertEquals(listOf(5 to 1, 7 to 1), npc.pendingHits())
             assertEquals(special_weapon_objs.tonalztics_of_ralos_charged.id, player.righthand?.id)
             assertEquals(1, player.righthand?.count)
         }

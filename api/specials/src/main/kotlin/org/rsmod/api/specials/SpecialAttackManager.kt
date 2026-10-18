@@ -341,7 +341,7 @@ constructor(
         target: PathingEntity,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
+        hitDelay: Int = ProjAnim.calculateMagicHitDelay(clientDelay),
         spell: ObjType? = null,
     ): Hit =
         manager.queueMagicHit(

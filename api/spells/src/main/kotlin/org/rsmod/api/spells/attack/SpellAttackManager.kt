@@ -192,7 +192,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         spell: ObjType,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
+        hitDelay: Int = ProjAnim.calculateMagicHitDelay(clientDelay),
     ): Hit =
         manager.queueMagicHit(
             source = source.player,
@@ -210,7 +210,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         target: PathingEntity,
         spell: ObjType,
         clientDelay: Int,
-        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
+        hitDelay: Int = ProjAnim.calculateMagicHitDelay(clientDelay),
     ): Hit =
         manager.queueSplashHit(
             source = source.player,

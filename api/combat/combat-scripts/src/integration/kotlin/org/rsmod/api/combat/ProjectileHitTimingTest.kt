@@ -38,11 +38,10 @@ import org.rsmod.map.zone.ZoneKey
 
 class ProjectileHitTimingTest {
     @ParameterizedTest
-    @CsvSource("0, 1, 1", "29, 1, 1", "30, 1, 2", "59, 1, 2", "60, 2, 3", "89, 2, 3", "90, 3, 4")
-    fun `ranged defaults retain their extra tick while magic follows projectile timing`(
+    @CsvSource("0, 1", "29, 1", "30, 2", "59, 2", "60, 3", "89, 3", "90, 4")
+    fun `ranged and magic defaults include a queue tick after projectile travel`(
         clientDelay: Int,
         impactTick: Int,
-        rangedTick: Int,
         state: GameTestState,
     ) =
         state.runInjectedGameTest(Dependencies::class, TestModule, NpcHitScript::class) { deps ->
@@ -69,19 +68,13 @@ class ProjectileHitTimingTest {
                 deps.weapons.queueSplashHit(this, targets[5], clientDelay)
                 deps.spells.queueSplashHit(this, targets[6], objs.spell_wind_strike, clientDelay)
             }
-            for (tick in 1..rangedTick) {
+            for (tick in 1..impactTick) {
                 advance()
                 assertTrue(
-                    targets.take(2).all { it.hitpoints == if (tick >= rangedTick) 199 else 200 }
-                )
-                assertTrue(
-                    targets.subList(2, 5).all {
-                        it.hitpoints == if (tick >= impactTick) 199 else 200
-                    }
+                    targets.take(5).all { it.hitpoints == if (tick >= impactTick) 199 else 200 }
                 )
                 assertTrue(targets.drop(5).all { it.hitpoints == 200 })
-                val expectedImpacts =
-                    (if (tick >= impactTick) 5 else 0) + (if (tick >= rangedTick) 2 else 0)
+                val expectedImpacts = if (tick >= impactTick) 7 else 0
                 assertEquals(expectedImpacts, impacts.size)
             }
             assertEquals(listOf(0, 0, 1, 1, 1, 1, 1), impacts.sorted())

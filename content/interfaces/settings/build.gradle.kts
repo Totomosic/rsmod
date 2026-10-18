@@ -12,4 +12,5 @@ dependencies {
     integrationImplementation(projects.api.account)
     integrationImplementation(projects.api.db)
     integrationImplementation(libs.flyway.core)
+    integrationImplementation(projects.content.other.login)
 }

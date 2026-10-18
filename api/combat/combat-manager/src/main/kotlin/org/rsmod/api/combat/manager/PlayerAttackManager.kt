@@ -1479,7 +1479,7 @@ constructor(
      *   visually lands on the target. This is usually derived from the projectile's metadata and
      *   determines when the [target]'s block animation should play.
      * @param hitDelay The number of server cycles to wait before applying the hit, usually
-     *   calculated with [ProjAnim.calculateHitDelay].
+     *   calculated with [ProjAnim.calculateMagicHitDelay].
      * @param retaliationDelay The number of server cycles to set as the retaliation queue delay for
      *   the [target]. By default, this matches [hitDelay]. When the magic hit "splashes," this is
      *   often set to `1` to trigger faster retaliation.

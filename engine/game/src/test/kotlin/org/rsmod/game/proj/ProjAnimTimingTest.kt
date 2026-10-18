@@ -18,7 +18,7 @@ class ProjAnimTimingTest {
         "89, 2, 3",
         "90, 3, 4",
     )
-    fun `ranged retains its queue tick while other projectiles use their impact tick`(
+    fun `magic and ranged include their queue tick separately from raw projectile timing`(
         clientCycles: Int,
         impactTick: Int,
         rangedTick: Int,
@@ -42,5 +42,7 @@ class ProjAnimTimingTest {
         assertEquals(ProjAnim.Duration(impactTick, clientCycles), projectile.durations)
         assertEquals(rangedTick, projectile.rangedServerCycles)
         assertEquals(ProjAnim.Duration(rangedTick, clientCycles), projectile.rangedDurations)
+        assertEquals(rangedTick, projectile.magicServerCycles)
+        assertEquals(ProjAnim.Duration(rangedTick, clientCycles), projectile.magicDurations)
     }
 }

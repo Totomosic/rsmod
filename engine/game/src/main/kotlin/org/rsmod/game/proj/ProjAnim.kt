@@ -33,6 +33,7 @@ public data class ProjAnim(
     public val serverCycles: Int
         get() = calculateHitDelay(endTime)
 
+    /** Raw projectile timing; player magic attacks use [magicDurations]. */
     public val durations: Duration
         get() = Duration(serverDelay = serverCycles, clientDelay = clientCycles)
 
@@ -42,14 +43,23 @@ public data class ProjAnim(
     public val rangedDurations: Duration
         get() = Duration(serverDelay = rangedServerCycles, clientDelay = clientCycles)
 
+    public val magicServerCycles: Int
+        get() = calculateMagicHitDelay(endTime)
+
+    public val magicDurations: Duration
+        get() = Duration(serverDelay = magicServerCycles, clientDelay = clientCycles)
+
     public data class Duration(val serverDelay: Int, val clientDelay: Int)
 
     public companion object {
-        /** Converts 20 ms client cycles to impact ticks, with a minimum of one queue tick. */
+        /** Converts raw 20 ms projectile cycles to whole ticks, with a minimum of one. */
         public fun calculateHitDelay(clientCycles: Int): Int = (clientCycles / 30).coerceAtLeast(1)
 
         /** Ranged hits retain one queue tick in addition to their projectile travel ticks. */
         public fun calculateRangedHitDelay(clientCycles: Int): Int = 1 + clientCycles / 30
+
+        /** Magic hits include one queue tick after the projectile's whole travel ticks. */
+        public fun calculateMagicHitDelay(clientCycles: Int): Int = 1 + clientCycles / 30
 
         private val noSourceSlot: Int
             get() = 0

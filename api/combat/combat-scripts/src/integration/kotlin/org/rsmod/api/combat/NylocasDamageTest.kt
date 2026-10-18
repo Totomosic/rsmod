@@ -114,7 +114,7 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 class NylocasDamageTest {
     @ParameterizedTest
     @CsvSource("false", "true")
-    fun `wave 21 spell then melee overkill removes the melee target before wave 22`(
+    fun `wave 21 spell then melee overkill waits for both bodies before wave 22`(
         overkill: Boolean,
         state: GameTestState,
     ) =
@@ -143,12 +143,13 @@ class NylocasDamageTest {
                 }
             melee.telejump(room.normal[CoordGrid(3291, 4248)])
             player.telejump(room.normal[CoordGrid(3290, 4248)])
-            // Keep the cap full after the mage's corrected projectile timing removes it earlier.
-            // Retaining the melee body must still block wave 22's first admission check.
+            // Both bodies must leave to bring the population below 24. The spell's queue tick
+            // keeps the mage in the room through wave 22's first admission check at age 8.
             repeat(18) { spawnNylo(deps, room, NylocasStyle.Melee).aiTimer(0) }
             val attacks = mutableListOf<Pair<Int, Npc>>()
             val impacts = mutableListOf<Pair<Int, Int>>()
             var removalCycle = -1
+            var mageRemovalCycle = -1
             var nextWaveCycle = -1
             var removedBeforeNextWave: Boolean? = null
             eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
@@ -160,6 +161,7 @@ class NylocasDamageTest {
             eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
                 val age = deps.clock.cycle - 1 - spawnCycle
                 if (!melee.isSlotAssigned && removalCycle == -1) removalCycle = age
+                if (!mage.isSlotAssigned && mageRemovalCycle == -1) mageRemovalCycle = age
             }
             eventBus.subscribeUnbound(NpcStateEvents.Create::class.java) {
                 if (nextWaveCycle == -1) {
@@ -194,7 +196,8 @@ class NylocasDamageTest {
             assertTrue(attacks[1].second === melee)
             assertEquals(if (overkill) listOf(hp, 0) else listOf(hp), impacts.map { it.second })
             assertEquals(if (overkill) 8 else 9, removalCycle)
-            assertEquals(if (overkill) 8 else 12, nextWaveCycle)
+            assertTrue(mageRemovalCycle in 9..11)
+            assertEquals(12, nextWaveCycle)
             assertEquals(true, removedBeforeNextWave)
         }
 
@@ -527,10 +530,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(
-                List(2) { SynthSound(2663, 1, 0) },
-                client.filterIsInstance<SynthSound>(),
-            )
+            assertEquals(List(2) { SynthSound(2663, 1, 0) }, client.filterIsInstance<SynthSound>())
             val orb = EntitySpotanim(npc.pendingSpotanims.single())
             assertEquals(1558, orb.id)
             assertEquals(constants.spotanim_slot_combat, orb.slot)
@@ -549,10 +549,7 @@ class NylocasDamageTest {
             client.clearOutgoing()
             npc.pendingSpotanims.clear()
             assertEquals(0, roll(deps, npc, NylocasStyle.Melee))
-            assertEquals(
-                List(2) { SynthSound(2663, 1, 0) },
-                client.filterIsInstance<SynthSound>(),
-            )
+            assertEquals(List(2) { SynthSound(2663, 1, 0) }, client.filterIsInstance<SynthSound>())
             assertEquals(1558, EntitySpotanim(npc.pendingSpotanims.single()).id)
         }
 

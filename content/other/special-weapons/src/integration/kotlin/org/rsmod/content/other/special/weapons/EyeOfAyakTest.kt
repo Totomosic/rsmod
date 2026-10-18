@@ -30,7 +30,9 @@ import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.inv.HeldOpScript
 import org.rsmod.api.inv.HeldUOpScript
+import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.obj.charges.ObjChargeManager
+import org.rsmod.api.player.events.PlayerHitEvents
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.registry.zone.ZoneUpdateMap
@@ -80,68 +82,90 @@ class EyeOfAyakTest {
         "true, 7, 4",
         "true, 8, 5",
     )
-    fun `Eye of Ayak and Shadow damage follow their projectile impact ticks`(
+    fun `Eye of Ayak and Shadow include the queue tick after projectile travel`(
         shadow: Boolean,
         distance: Int,
-        hitDelay: Int,
+        travelTicks: Int,
         state: GameTestState,
     ) {
         for (playerTarget in listOf(false, true)) {
-            state.runEyeTest { deps ->
-                val target =
-                    if (playerTarget) {
-                        registerPlayer(CoordGrid(3200, 3200)).also {
-                            it.setBaseLevel(stats.hitpoints, 99)
-                            it.setCurrentLevel(stats.hitpoints, 99)
-                        }
-                    } else spawnDummy()
-                player.placeAt(target.coords.translateZ(distance))
-                if (shadow) {
-                    player.worn[Wearpos.RightHand.slot] = InvObj(objs.tumekens_shadow_uncharged)
-                    deps.objCharges.addCharges(
-                        player.worn,
-                        Wearpos.RightHand.slot,
-                        10,
-                        varobjs.tumeken_charges,
-                        20_000,
-                    )
-                    player.stats[stats.magic] = 99
-                } else equipEye(deps)
-                random.next = HIT_ROLL
-                random.then = 5
-                cast(deps, target)
-                val projectile =
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
-                        .filterIsInstance<MapProjAnimV2>()
-                        .single()
-                assertEquals(
-                    if (shadow) spotanims.tumekens_shadow_travel.id else EyeOfAyakSpots.travel.id,
-                    projectile.id,
-                )
-                assertEquals(hitDelay, projectile.endTime / 30)
-                if (target is Npc) assertEquals(hitDelay, target.pendingHits().single().second)
-                assertTrue(projectile.startTime < projectile.endTime)
-                val startingHp =
+            for (splash in listOf(false, true)) {
+                state.runEyeTest { deps ->
+                    val target =
+                        if (playerTarget) {
+                            registerPlayer(CoordGrid(3200, 3200)).also {
+                                it.setBaseLevel(stats.hitpoints, 99)
+                                it.setCurrentLevel(stats.hitpoints, 99)
+                            }
+                        } else spawnDummy()
+                    player.placeAt(target.coords.translateZ(distance))
+                    if (shadow) {
+                        player.worn[Wearpos.RightHand.slot] = InvObj(objs.tumekens_shadow_uncharged)
+                        deps.objCharges.addCharges(
+                            player.worn,
+                            Wearpos.RightHand.slot,
+                            10,
+                            varobjs.tumeken_charges,
+                            20_000,
+                        )
+                        player.stats[stats.magic] = 99
+                    } else equipEye(deps)
+                    val impacts = mutableListOf<Int>()
                     when (target) {
-                        is Npc -> target.hitpoints
-                        is Player -> target.hitpoints
+                        is Npc ->
+                            eventBus.subscribeKeyed(
+                                NpcHitEvents.Impact::class.java,
+                                target.id.toLong(),
+                            ) {
+                                if (npc === target) impacts += hit.damage
+                            }
+                        is Player ->
+                            eventBus.subscribeUnbound(PlayerHitEvents.Impact::class.java) {
+                                if (player === target) impacts += damage
+                            }
                     }
-                if (hitDelay > 1) advance(ticks = hitDelay - 1)
-                assertEquals(
-                    startingHp,
-                    when (target) {
-                        is Npc -> target.hitpoints
-                        is Player -> target.hitpoints
-                    },
-                )
-                advance()
-                assertEquals(
-                    startingHp - 5,
-                    when (target) {
-                        is Npc -> target.hitpoints
-                        is Player -> target.hitpoints
-                    },
-                )
+                    random.next = if (splash) 9999 else HIT_ROLL
+                    if (!splash) random.then = 5
+                    cast(deps, target)
+                    val projectile =
+                        checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                            .filterIsInstance<MapProjAnimV2>()
+                            .single()
+                    assertEquals(
+                        if (shadow) spotanims.tumekens_shadow_travel.id
+                        else EyeOfAyakSpots.travel.id,
+                        projectile.id,
+                    )
+                    assertEquals(travelTicks, projectile.endTime / 30)
+                    val impactTick = travelTicks + 1
+                    if (target is Npc)
+                        assertEquals(impactTick, target.pendingHits().single().second)
+                    assertTrue(projectile.startTime < projectile.endTime)
+                    val startingHp =
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        }
+                    advance(ticks = impactTick - 1)
+                    assertTrue(impacts.isEmpty())
+                    assertEquals(
+                        startingHp,
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        },
+                    )
+                    advance()
+                    val damage = if (splash) 0 else 5
+                    assertEquals(listOf(damage), impacts)
+                    assertEquals(
+                        startingHp - damage,
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        },
+                    )
+                }
             }
         }
     }

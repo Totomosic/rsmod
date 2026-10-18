@@ -58,7 +58,7 @@ class EyeOfAyakWeapons @Inject constructor(private val charges: CombatChargeMana
             spotanim(EyeOfAyakSpots.cast)
             val projectile =
                 manager.spawnProjectile(this, target, EyeOfAyakSpots.travel, EyeOfAyakProjs.travel)
-            val (serverDelay, clientDelay) = projectile.durations
+            val (serverDelay, clientDelay) = projectile.magicDurations
             // Eye uses the ancient shadow cast sound (178), not Tumeken's Shadow (6410).
             // https://oldschool.runescape.wiki/w/List_of_in-game_sound_IDs
             val castSound = synths.shadow_cast

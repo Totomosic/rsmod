@@ -67,7 +67,7 @@ class TumekensShadowWeapons @Inject constructor(private val charges: CombatCharg
                     spotanim = spotanims.tumekens_shadow_travel,
                     projanim = projanims.tumekens_shadow,
                 )
-            val (serverDelay, clientDelay) = proj.durations
+            val (serverDelay, clientDelay) = proj.magicDurations
 
             val castSound = synths.toa_shadow_weapon_cast_fire_01
             val splash = manager.rollStaffSplash(this, target, attack)

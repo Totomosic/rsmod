@@ -40,6 +40,8 @@ class TonalzticsOfRalosWeapons : WeaponMap {
             for ((index, spot) in
                 listOf(TonalzticsSpots.first, TonalzticsSpots.second).withIndex()) {
                 val projectile = manager.spawnProjectile(this, target, spot, TonalzticsProjs.travel)
+                // Ralos applies both hits on its one-tick projectile impact.
+                val hitDelay = projectile.serverCycles
                 // Both accuracy and damage are independent, including when the first hit misses.
                 val damage = manager.rollRangedDamage(this, target, attack, maxHitMultiplier = 0.75)
                 manager.giveCombatXp(this, target, attack, damage)
@@ -50,16 +52,10 @@ class TonalzticsOfRalosWeapons : WeaponMap {
                         ammo = null,
                         damage = damage,
                         clientDelay = projectile.clientCycles,
-                        hitDelay = projectile.rangedServerCycles,
+                        hitDelay = hitDelay,
                     )
                 } else {
-                    manager.queueRangedDamage(
-                        this,
-                        target,
-                        null,
-                        damage,
-                        projectile.rangedServerCycles,
-                    )
+                    manager.queueRangedDamage(this, target, null, damage, hitDelay)
                 }
             }
             // The charged weapon stays equipped and does not use quiver ammunition.

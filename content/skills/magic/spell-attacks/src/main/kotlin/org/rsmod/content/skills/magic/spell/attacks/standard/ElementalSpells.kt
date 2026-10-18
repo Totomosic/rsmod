@@ -455,7 +455,7 @@ class ElementalSpells @Inject constructor(private val objTypes: ObjTypeList) : S
             spotanim(launch, height = 92)
 
             val proj = manager.spawnProjectile(this, target, travel, projanims.magic_spell)
-            val (serverDelay, clientDelay) = proj.durations
+            val (serverDelay, clientDelay) = proj.magicDurations
             val spell = attack.spell.obj
 
             val splash = manager.rollSplash(this, target, attack, castResult)

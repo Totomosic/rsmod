@@ -29,8 +29,7 @@ internal object TonalzticsProjBuilds : ProjAnimBuilder() {
             angle = 0
             lengthAdjustment = 30
             progress = 11
-            // One game tick of travel at every distance; ranged hit delay includes another queue
-            // tick.
+            // One game tick of travel and hit delay at every distance.
             stepMultiplier = 0
         }
     }
