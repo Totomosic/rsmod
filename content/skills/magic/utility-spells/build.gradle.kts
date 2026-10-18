@@ -10,6 +10,7 @@ dependencies {
     integrationImplementation(projects.api.spells)
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(projects.api.spellsRunes)
+    integrationImplementation(projects.api.net)
     integrationImplementation(projects.content.skills.magic.teleports)
     integrationImplementation(libs.openrs2.cache)
 }
