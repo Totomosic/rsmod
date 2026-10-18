@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.rsmod.routefinder.LineValidator
+import org.rsmod.routefinder.flag.CollisionFlag
 
 class CollisionFlagMapTest {
     @Test
@@ -107,6 +109,30 @@ class CollisionFlagMapTest {
         assertEquals(0x400, map[3200, 3200, 0])
         map.remove(3200, 3200, 0, 0x400)
         assertEquals(0, map[3200, 3200, 0])
+    }
+
+    @Test
+    fun `removing collision after zone unload does not poison reloaded tiles`() {
+        val map = CollisionFlagMap()
+        map.add(3202, 3202, 0, CollisionFlag.BLOCK_NPCS)
+        map.deallocateIfPresent(3200, 3200, 0)
+
+        // Actor cleanup can run after its old zone has already been unloaded.
+        map.remove(3202, 3202, 0, CollisionFlag.BLOCK_NPCS)
+        map.allocateIfAbsent(3200, 3200, 0)
+
+        val lines = LineValidator(map)
+        assertTrue(lines.hasLineOfWalk(0, 3201, 3202, 3203, 3202))
+        assertTrue(lines.hasLineOfSight(0, 3201, 3202, 3203, 3202))
+        assertEquals(0, map[3202, 3202, 0])
+    }
+
+    @Test
+    fun `remove from unallocated zone keeps it unallocated`() {
+        val map = CollisionFlagMap()
+        map.remove(3202, 3202, 0, CollisionFlag.BLOCK_NPCS)
+        assertFalse(map.isZoneAllocated(3202, 3202, 0))
+        assertEquals(map.defaultFlag, map[3202, 3202, 0])
     }
 
     @Test

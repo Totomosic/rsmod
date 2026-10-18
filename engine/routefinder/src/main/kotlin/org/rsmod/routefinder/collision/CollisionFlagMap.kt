@@ -49,8 +49,12 @@ public class CollisionFlagMap(public val flags: Array<IntArray?> = arrayOfNulls(
     }
 
     public fun remove(absoluteX: Int, absoluteZ: Int, level: Int, mask: Int) {
-        val currentFlags = this[absoluteX, absoluteZ, level]
-        this[absoluteX, absoluteZ, level] = currentFlags and mask.inv()
+        // Cleanup can outlive a zone (for example, followers leaving a reclaimed instance).
+        // The get operator's default is an all-blocked sentinel, not stored collision data.
+        // Removing from it would allocate a tile with almost every blocking flag enabled.
+        val tiles = flags[zoneIndex(absoluteX, absoluteZ, level)] ?: return
+        val tileIndex = tileIndex(absoluteX, absoluteZ)
+        tiles[tileIndex] = tiles[tileIndex] and mask.inv()
     }
 
     /**
