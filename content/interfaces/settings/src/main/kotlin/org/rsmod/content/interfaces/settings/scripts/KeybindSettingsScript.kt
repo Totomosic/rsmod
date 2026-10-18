@@ -65,7 +65,7 @@ class KeybindSettingsScript : PluginScript() {
         onCommand("localscape_keybind_reset") {
             desc = "Restore default side-panel keybinds"
             cheat {
-                if (args.isEmpty() && player.ui.containsOverlay(interfaces.settings)) {
+                if (args.isEmpty()) {
                     player.restoreKeybinds()
                 }
             }
@@ -83,7 +83,9 @@ class KeybindSettingsScript : PluginScript() {
     }
 
     private fun Player.selectKeybind(setting: Int, key: Int) {
-        if (!ui.containsOverlay(interfaces.settings) || key !in 0..13) {
+        // The client queues this command after its dropdown script returns. The
+        // settings overlay can close before delivery, but the preference must save.
+        if (key !in 0..13) {
             return
         }
         val selected = bindings[setting] ?: return

@@ -9,4 +9,7 @@ dependencies {
     integrationImplementation(projects.api.player)
     integrationImplementation(projects.api.net)
     integrationImplementation(libs.fastutil)
+    integrationImplementation(projects.api.account)
+    integrationImplementation(projects.api.db)
+    integrationImplementation(libs.flyway.core)
 }

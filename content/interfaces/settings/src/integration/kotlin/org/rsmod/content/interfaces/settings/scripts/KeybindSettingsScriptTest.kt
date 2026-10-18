@@ -1,13 +1,21 @@
 package org.rsmod.content.interfaces.settings.scripts
 
 import jakarta.inject.Inject
+import java.nio.file.Files
+import java.sql.DriverManager
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import net.rsprot.protocol.game.outgoing.varp.VarpLarge
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
+import org.rsmod.api.account.character.main.CharacterAccountApplier
+import org.rsmod.api.account.character.main.CharacterAccountRepository
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.interfaces
+import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.db.DatabaseConnection
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
+import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.content.interfaces.settings.configs.keybind_varbits
@@ -17,6 +25,105 @@ import org.rsmod.game.type.varp.VarpLifetime
 
 class KeybindSettingsScriptTest {
     class Dependencies @Inject constructor(val handler: ClientCheatHandler)
+
+    @Test
+    fun GameTestState.`assignment clears every conflicting menu across packed varps`() =
+        runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
+            player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
+            VarPlayerIntMapSetter.set(player, keybind_varbits.stats, 2)
+            VarPlayerIntMapSetter.set(player, keybind_varbits.magic, 2)
+            VarPlayerIntMapSetter.set(player, keybind_varbits.music, 2)
+            deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
+
+            assertEquals(2, player.vars[keybind_varbits.inventory])
+            assertEquals(0, player.vars[keybind_varbits.stats])
+            assertEquals(0, player.vars[keybind_varbits.magic])
+            assertEquals(0, player.vars[keybind_varbits.music])
+            assertEquals(1, player.vars[keybind_varbits.combat])
+        }
+
+    class PersistenceDependencies
+    @Inject
+    constructor(
+        val handler: ClientCheatHandler,
+        val repository: CharacterAccountRepository,
+        val applier: CharacterAccountApplier,
+    )
+
+    @Test
+    fun GameTestState.`reassigned keys and None survive account save load and login`() =
+        runInjectedGameTest(PersistenceDependencies::class, null, KeybindSettingsScript::class) {
+            deps ->
+            player.modLevel = cacheTypes.modLevels[modlevels.player]
+            player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
+            advance(2)
+            deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
+            deps.handler.handle(player, ClientCheat("localscape_keybind 20 12"))
+            deps.handler.handle(player, ClientCheat("localscape_keybind 27 1"))
+            val saved = player.vars.backing.toMap()
+
+            val database = Files.createTempFile("keybind-settings-", ".db")
+            val restored = registerPlayer()
+            try {
+                val url = "jdbc:sqlite:$database"
+                Flyway.configure()
+                    .dataSource(url, "", "")
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate()
+                DriverManager.getConnection(url).use { raw ->
+                    val connection = DatabaseConnection(raw)
+                    val account =
+                        checkNotNull(
+                            deps.repository.insertOrSelectAccountId(connection, "keybinds", "test")
+                        )
+                    val character =
+                        checkNotNull(
+                            deps.repository.insertAndSelectCharacterId(connection, account)
+                        )
+                    deps.repository.save(connection, player, account, character)
+                    val loaded =
+                        checkNotNull(
+                            deps.repository.selectAndCreateMetadataList(connection, "keybinds")
+                        )
+                    deps.applier.apply(restored, loaded.accountData)
+                    eventBus.publish(SessionStateEvent.Login(restored))
+                }
+            } finally {
+                Files.deleteIfExists(database)
+            }
+
+            for (binding in
+                listOf(
+                    keybind_varbits.inventory,
+                    keybind_varbits.stats,
+                    keybind_varbits.magic,
+                    keybind_varbits.emotes,
+                    keybind_varbits.music,
+                    keybind_varbits.combat,
+                )) {
+                assertEquals(saved[binding.baseVar.id], restored.vars[binding.baseVar])
+            }
+            assertEquals(2, restored.vars[keybind_varbits.inventory])
+            assertEquals(0, restored.vars[keybind_varbits.stats])
+            assertEquals(12, restored.vars[keybind_varbits.magic])
+            assertEquals(0, restored.vars[keybind_varbits.emotes])
+            assertEquals(1, restored.vars[keybind_varbits.music])
+            assertEquals(0, restored.vars[keybind_varbits.combat])
+        }
+
+    @Test
+    fun GameTestState.`queued keybind save survives settings closing before delivery`() =
+        runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
+            player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
+            advance(2)
+            player.ifCloseOverlay(interfaces.settings, eventBus)
+            deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
+            eventBus.publish(SessionStateEvent.Login(player))
+
+            assertEquals(2, player.vars[keybind_varbits.inventory])
+            assertEquals(0, player.vars[keybind_varbits.stats])
+        }
 
     @Test
     fun GameTestState
@@ -98,7 +205,7 @@ class KeybindSettingsScriptTest {
     fun GameTestState.`rejects invalid keybind requests`() =
         runInjectedGameTest(Dependencies::class, null, KeybindSettingsScript::class) { deps ->
             val original = player.vars.backing.toMap()
-            deps.handler.handle(player, ClientCheat("localscape_keybind 25 2"))
+            deps.handler.handle(player, ClientCheat("localscape_keybind 238 2"))
             assertEquals(original, player.vars.backing.toMap())
 
             player.ifOpenOverlay(interfaces.settings, components.toplevel_target_floater)
