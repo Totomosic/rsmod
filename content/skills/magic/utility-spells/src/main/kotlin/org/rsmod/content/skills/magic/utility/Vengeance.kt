@@ -12,6 +12,7 @@ import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.repo.world.WorldRepository
 import org.rsmod.api.script.onApPlayerT
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onIfOverlayButton
@@ -28,6 +29,7 @@ import org.rsmod.api.type.refs.varp.VarpReferences
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.HitType
+import org.rsmod.game.type.synth.SynthType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -39,6 +41,7 @@ constructor(
     private val runes: MagicRuneManager,
     private val npcs: NpcList,
     private val npcHitModifier: NpcHitModifier,
+    private val world: WorldRepository,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onIfOverlayButton(vengeance_components.cast) {
@@ -79,6 +82,11 @@ constructor(
         softTimer(vengeance_timers.cooldown, VENGEANCE_COOLDOWN)
         anim(if (other) vengeance_seqs.cast_other else vengeance_seqs.cast)
         target.spotanim(if (other) vengeance_spots.cast_other else vengeance_spots.cast)
+        world.soundArea(
+            target,
+            if (other) vengeance_synths.cast_other else vengeance_synths.cast,
+            radius = 10,
+        )
         statAdvance(stats.magic, spell.castXp)
     }
 
@@ -135,4 +143,9 @@ internal object vengeance_spots : SpotanimReferences() {
 
 internal object vengeance_timers : TimerReferences() {
     val cooldown = find("vengeance_cooldown")
+}
+
+internal object vengeance_synths {
+    val cast = SynthType(2907, "lunar_vengence")
+    val cast_other = SynthType(2908, "lunar_vengence_other")
 }

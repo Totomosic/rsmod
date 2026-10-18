@@ -3,6 +3,7 @@ package org.rsmod.content.skills.magic.utility
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.config.refs.components
@@ -15,6 +16,7 @@ import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.spells.runes.combo.ComboRuneRepository
@@ -38,8 +40,23 @@ import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.seq.EntitySeq
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 
 class DeathChargeTest {
+    @Test
+    fun GameTestState.`successful casts play the spell sound without replaying on cooldown`() =
+        runDeathChargeTest { deps ->
+            val sounds = captureSounds(deps.zones)
+            cast()
+            assertEquals(listOf(SoundArea(5034, 0, 1, 10, 1, 0, 0)), sounds)
+            sounds.clear()
+            cast()
+            assertTrue(sounds.isEmpty())
+            advance(ticks = player.deathChargeExpiry - player.currentMapClock - 1)
+            cast()
+            assertEquals(listOf(SoundArea(5034, 0, 1, 10, 1, 0, 0)), sounds)
+        }
+
     @Test
     fun GameTestState
         .`cast uses the human animation rather than the death charge effect animation`() =
@@ -172,20 +189,23 @@ class DeathChargeTest {
         }
 
     @Test
-    fun GameTestState.`failed casts grant no stacks or cooldown`() = runDeathChargeTest {
-        VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Standard.varValue)
-        cast()
-        assertEquals(0, player.deathChargeStacks)
-        VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
-        player.setCurrentLevel(stats.magic, 1)
-        cast()
-        assertEquals(0, player.deathChargeStacks)
-        player.setCurrentLevel(stats.magic, 99)
-        player.inv[0] = null
-        cast()
-        assertEquals(0, player.deathChargeStacks)
-        assertEquals(0, player.deathChargeExpiry)
-    }
+    fun GameTestState.`failed casts grant no stacks cooldown or sound`() =
+        runDeathChargeTest { deps ->
+            val sounds = captureSounds(deps.zones)
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Standard.varValue)
+            cast()
+            assertEquals(0, player.deathChargeStacks)
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+            player.setCurrentLevel(stats.magic, 1)
+            cast()
+            assertEquals(0, player.deathChargeStacks)
+            player.setCurrentLevel(stats.magic, 99)
+            player.inv[0] = null
+            cast()
+            assertEquals(0, player.deathChargeStacks)
+            assertEquals(0, player.deathChargeExpiry)
+            assertTrue(sounds.isEmpty())
+        }
 
     @Test
     fun GameTestState.`successful cast consumes cache rune requirements only once`() =
@@ -230,6 +250,14 @@ class DeathChargeTest {
         advance(ticks = 1)
     }
 
+    private fun GameTestScope.captureSounds(zones: ZoneUpdateMap): MutableList<SoundArea> {
+        val sounds = mutableListOf<SoundArea>()
+        eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+            sounds += zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+        }
+        return sounds
+    }
+
     private fun GameTestScope.kill(hero: Player = player) {
         val npc = spawnNpc(player.coords.translateZ(1), target)
         npc.heroPoints(hero, 7)
@@ -237,7 +265,9 @@ class DeathChargeTest {
         advance(ticks = 1)
     }
 
-    class Dependencies @Inject constructor(val spells: MagicSpellRegistry)
+    class Dependencies
+    @Inject
+    constructor(val spells: MagicSpellRegistry, val zones: ZoneUpdateMap)
 
     private object TestModule : AbstractModule() {
         override fun configure() {

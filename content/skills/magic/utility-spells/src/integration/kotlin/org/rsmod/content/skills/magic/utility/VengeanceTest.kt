@@ -3,13 +3,17 @@ package org.rsmod.content.skills.magic.utility
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.hit.queueHit
@@ -17,6 +21,7 @@ import org.rsmod.api.player.interact.PlayerTInteractions
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.spells.runes.combo.ComboRuneRepository
@@ -40,8 +45,28 @@ import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 
 class VengeanceTest {
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `successful casts play the matching sound at the recipient once`(
+        other: Boolean,
+        state: GameTestState,
+    ) =
+        state.runVengeanceTest { deps ->
+            val recipient = if (other) registerPlayer(player.coords.translateX(1)) else player
+            val sounds = captureSounds(deps.zones)
+            if (other) castOther(deps, recipient) else cast()
+            assertEquals(
+                listOf(SoundArea(if (other) 2908 else 2907, 0, 1, 10, 1, if (other) 1 else 0, 0)),
+                sounds,
+            )
+            sounds.clear()
+            if (other) castOther(deps, recipient) else cast()
+            assertTrue(sounds.isEmpty()) // Cooldown rejection must not replay the sound.
+        }
+
     @Test
     fun GameTestState.`self cast reflects 75 percent rounded down once and keeps cooldown`() =
         runVengeanceTest {
@@ -176,21 +201,24 @@ class VengeanceTest {
     }
 
     @Test
-    fun GameTestState.`failed self casts do not grant a buff or cooldown`() = runVengeanceTest {
-        VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Standard.varValue)
-        cast()
-        assertEquals(0, player.vars[vengeance_varbits.active])
-        VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Lunars.varValue)
-        player.setCurrentLevel(stats.magic, 1)
-        cast()
-        assertEquals(0, player.vars[vengeance_varbits.active])
-        player.setCurrentLevel(stats.magic, 99)
-        player.inv[0] = null
-        cast()
-        assertEquals(0, player.vars[vengeance_varbits.active])
-        assertEquals(0, player.vengeanceExpiry)
-        assertEquals(0, player.vars[vengeance_varbits.cooldown])
-    }
+    fun GameTestState.`failed self casts do not grant a buff cooldown or sound`() =
+        runVengeanceTest { deps ->
+            val sounds = captureSounds(deps.zones)
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Standard.varValue)
+            cast()
+            assertEquals(0, player.vars[vengeance_varbits.active])
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Lunars.varValue)
+            player.setCurrentLevel(stats.magic, 1)
+            cast()
+            assertEquals(0, player.vars[vengeance_varbits.active])
+            player.setCurrentLevel(stats.magic, 99)
+            player.inv[0] = null
+            cast()
+            assertEquals(0, player.vars[vengeance_varbits.active])
+            assertEquals(0, player.vengeanceExpiry)
+            assertEquals(0, player.vars[vengeance_varbits.cooldown])
+            assertTrue(sounds.isEmpty())
+        }
 
     @Test
     fun GameTestState.`both spells consume their own rune requirements once`() =
@@ -225,11 +253,21 @@ class VengeanceTest {
         runVengeanceTest { deps ->
             val recipient = registerPlayer(player.coords.translateX(1))
             VarPlayerIntMapSetter.set(recipient, vengeance_varbits.active, 1)
+            val sounds = captureSounds(deps.zones)
             castOther(deps, recipient)
             assertEquals(0, player.vengeanceExpiry)
             assertEquals(0, player.vars[vengeance_varbits.cooldown])
             assertMessageSent("That player already has Vengeance active.")
+            assertTrue(sounds.isEmpty())
         }
+
+    private fun GameTestScope.captureSounds(zones: ZoneUpdateMap): MutableList<SoundArea> {
+        val sounds = mutableListOf<SoundArea>()
+        eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+            sounds += zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+        }
+        return sounds
+    }
 
     private fun GameTestScope.cast() {
         player.ifButton(vengeance_components.cast)
@@ -270,6 +308,7 @@ class VengeanceTest {
         val spells: MagicSpellRegistry,
         val interactions: PlayerTInteractions,
         val players: PlayerList,
+        val zones: ZoneUpdateMap,
     )
 
     private object TestModule : AbstractModule() {

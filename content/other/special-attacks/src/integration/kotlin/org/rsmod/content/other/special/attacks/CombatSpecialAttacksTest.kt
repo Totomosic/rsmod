@@ -125,18 +125,26 @@ class CombatSpecialAttacksTest {
             }
         }
 
-    @Test
-    fun GameTestState.`claw special plays all three sound phases in the world`() =
-        runSpecialsTest { deps ->
+    @ParameterizedTest
+    @CsvSource("false, false", "false, true", "true, false", "true, true")
+    fun `claw special plays sounds one two three three for both variants and target types`(
+        ornament: Boolean,
+        playerTarget: Boolean,
+        state: GameTestState,
+    ) =
+        state.runSpecialsTest { deps ->
             val npc = spawnDummy()
+            val target = if (playerTarget) registerPlayer(npc.coords) else npc
+            val weapon = if (ornament) special_objs.dragon_claws_cr else special_objs.dragon_claws
             random.next = HIT_ROLL
-            useMeleeSpecial(deps, special_objs.dragon_claws, npc, MeleeAttackType.Slash)
+            useMeleeSpecial(deps, weapon, target, MeleeAttackType.Slash)
             val sounds =
                 deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
             assertEquals(
-                listOf(4138 to 0, 4140 to 15, 4141 to 30),
+                listOf(4138 to 0, 4140 to 15, 4141 to 30, 4141 to 45),
                 sounds.map { it.id to it.delay },
             )
+            assertTrue(sounds.all { it.loops == 1 && it.range == 10 })
         }
 
     @Test

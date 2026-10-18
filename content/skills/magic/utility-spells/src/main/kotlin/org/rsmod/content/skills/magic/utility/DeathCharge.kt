@@ -12,6 +12,7 @@ import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.repo.world.WorldRepository
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.script.onPlayerLogin
@@ -25,6 +26,7 @@ import org.rsmod.api.type.refs.timer.TimerReferences
 import org.rsmod.api.type.refs.varbit.VarBitReferences
 import org.rsmod.api.type.refs.varp.VarpReferences
 import org.rsmod.game.entity.Player
+import org.rsmod.game.type.synth.SynthType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -34,6 +36,7 @@ constructor(
     private val protectedAccess: ProtectedAccessLauncher,
     private val spells: MagicSpellRegistry,
     private val runes: MagicRuneManager,
+    private val world: WorldRepository,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onIfOverlayButton(death_charge_components.cast) {
@@ -63,6 +66,7 @@ constructor(
         softTimer(death_charge_timers.expire, DEATH_CHARGE_DURATION)
         anim(death_charge_seqs.cast)
         spotanim(death_charge_spots.cast)
+        world.soundArea(player, death_charge_synths.cast, radius = 10)
         statAdvance(stats.magic, spell.castXp)
         mes("You have two Death Charge stacks for 60 seconds.")
     }
@@ -127,4 +131,8 @@ internal object death_charge_spots : SpotanimReferences() {
 
 internal object death_charge_timers : TimerReferences() {
     val expire = find("death_charge_expire")
+}
+
+internal object death_charge_synths {
+    val cast = SynthType(5034, "death_charge_cast")
 }

@@ -61,6 +61,7 @@ class DragonClawsSpecialAttack : SpecialAttackMap {
             manager.soundArea(player, SpecialAttackSynths.clawsFirst, radius = 10)
             manager.soundArea(player, SpecialAttackSynths.clawsSecond, delay = 15, radius = 10)
             manager.soundArea(player, SpecialAttackSynths.clawsLast, delay = 30, radius = 10)
+            manager.soundArea(player, SpecialAttackSynths.clawsLast, delay = 45, radius = 10)
             spotanim(
                 spot = special_spots.dragon_claws,
                 slot = constants.spotanim_slot_combat,
