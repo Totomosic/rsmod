@@ -39,7 +39,6 @@ import org.rsmod.api.player.interact.NpcInteractions
 import org.rsmod.api.player.interact.NpcTInteractions
 import org.rsmod.api.player.interact.PlayerInteractions
 import org.rsmod.api.player.interact.PlayerTInteractions
-import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
@@ -209,7 +208,7 @@ constructor(
         val attackSound = weapon?.paramOrNull(soundParam) ?: defaultSound
 
         player.anim(attackAnim)
-        player.soundSynth(attackSound)
+        worldRepo.soundArea(player, attackSound, radius = 10)
     }
 
     /**
@@ -227,7 +226,7 @@ constructor(
         val attackAnim = weapon.paramOrNull(params.attack_anim_stance1) ?: return false
         val attackSound = weapon.paramOrNull(params.attack_sound_stance1)
         player.anim(attackAnim)
-        attackSound?.let(player::soundSynth)
+        attackSound?.let { worldRepo.soundArea(player, it, radius = 10) }
         return true
     }
 
@@ -994,7 +993,7 @@ constructor(
      *   visually lands on the target. This is usually derived from the projectile's metadata and
      *   determines when the [target]'s block animation should play.
      * @param hitDelay The number of server cycles to wait before applying the hit, usually
-     *   calculated as `1 + (clientDelay / 30)`.
+     *   calculated with [ProjAnim.calculateRangedHitDelay].
      */
     public fun queueRangedHit(
         source: Player,
@@ -1480,7 +1479,7 @@ constructor(
      *   visually lands on the target. This is usually derived from the projectile's metadata and
      *   determines when the [target]'s block animation should play.
      * @param hitDelay The number of server cycles to wait before applying the hit, usually
-     *   calculated as `1 + (clientDelay / 30)`.
+     *   calculated with [ProjAnim.calculateHitDelay].
      * @param retaliationDelay The number of server cycles to set as the retaliation queue delay for
      *   the [target]. By default, this matches [hitDelay]. When the magic hit "splashes," this is
      *   often set to `1` to trigger faster retaliation.
@@ -1606,8 +1605,8 @@ constructor(
      * @param clientDelay The delay in client cycles (`20ms` per cycle) before the projectile
      *   visually lands on [target]. This is usually derived from the projectile's metadata and
      *   determines when the [hitSpot] spotanim should play on [target].
-     * @param castSound The sound to play immediately. Plays as a `sound_area` if the target is a
-     *   [Player], or a `sound_synth` if target is an [Npc]. If `null`, no cast sound is played.
+     * @param castSound The sound to play immediately around [source]. If `null`, no cast sound is
+     *   played.
      * @param soundRadius The radius to use for [castSound] when played as a `soundarea`.
      * @param hitSpot The spotanim to play on [target] after [clientDelay]. If `null`, no spotanim
      *   is shown.
@@ -1617,69 +1616,6 @@ constructor(
     public fun playMagicHitFx(
         source: Player,
         target: PathingEntity,
-        clientDelay: Int,
-        castSound: SynthType?,
-        soundRadius: Int,
-        hitSpot: SpotanimType?,
-        hitSpotHeight: Int,
-        hitSound: SynthType?,
-    ): Unit =
-        when (target) {
-            is Npc ->
-                playMagicHitFx(
-                    source = source,
-                    target = target,
-                    clientDelay = clientDelay,
-                    castSound = castSound,
-                    hitSpot = hitSpot,
-                    hitSpotHeight = hitSpotHeight,
-                    hitSound = hitSound,
-                )
-            is Player ->
-                playMagicHitFx(
-                    source = source,
-                    target = target,
-                    clientDelay = clientDelay,
-                    castSound = castSound,
-                    soundRadius = soundRadius,
-                    hitSpot = hitSpot,
-                    hitSpotHeight = hitSpotHeight,
-                    hitSound = hitSound,
-                )
-        }
-
-    private fun playMagicHitFx(
-        source: Player,
-        target: Npc,
-        clientDelay: Int,
-        castSound: SynthType?,
-        hitSpot: SpotanimType?,
-        hitSpotHeight: Int,
-        hitSound: SynthType?,
-    ) {
-        if (castSound != null) {
-            source.soundSynth(castSound)
-        }
-
-        if (hitSpot != null) {
-            target.spotanim(hitSpot, delay = clientDelay, height = hitSpotHeight)
-        }
-
-        if (hitSound != null) {
-            soundArea(
-                source = target.coords,
-                synth = hitSound,
-                delay = clientDelay,
-                loops = 1,
-                radius = 10,
-                size = 0,
-            )
-        }
-    }
-
-    private fun playMagicHitFx(
-        source: Player,
-        target: Player,
         clientDelay: Int,
         castSound: SynthType?,
         soundRadius: Int,
@@ -1719,58 +1655,13 @@ constructor(
      *
      * @param clientDelay The delay in client cycles (`20ms` per cycle) before the splash spotanim
      *   and sound are played on [target]. Typically derived from the projectile's metadata.
-     * @param castSound The sound to play immediately. Plays as a `soundarea` if [target] is a
-     *   [Player], or a `soundsynth` if [target] is an [Npc]. If `null`, no cast sound is played.
+     * @param castSound The sound to play immediately around [source]. If `null`, no cast sound is
+     *   played.
      * @param soundRadius The radius to use for [castSound] when played as a `soundarea`.
      */
     public fun playMagicSplashFx(
         source: Player,
         target: PathingEntity,
-        clientDelay: Int,
-        castSound: SynthType?,
-        soundRadius: Int,
-    ): Unit =
-        when (target) {
-            is Npc ->
-                playMagicSplashFx(
-                    source = source,
-                    target = target,
-                    clientDelay = clientDelay,
-                    castSound = castSound,
-                )
-            is Player ->
-                playMagicSplashFx(
-                    source = source,
-                    target = target,
-                    clientDelay = clientDelay,
-                    castSound = castSound,
-                    soundRadius = soundRadius,
-                )
-        }
-
-    private fun playMagicSplashFx(
-        source: Player,
-        target: Npc,
-        clientDelay: Int,
-        castSound: SynthType?,
-    ) {
-        if (castSound != null) {
-            source.soundSynth(castSound)
-        }
-        target.spotanim(spotanims.failedspell_impact, delay = clientDelay, height = 124)
-        soundArea(
-            source = target.coords,
-            synth = synths.spellfail,
-            delay = clientDelay,
-            loops = 1,
-            radius = 10,
-            size = 0,
-        )
-    }
-
-    private fun playMagicSplashFx(
-        source: Player,
-        target: Player,
         clientDelay: Int,
         castSound: SynthType?,
         soundRadius: Int,

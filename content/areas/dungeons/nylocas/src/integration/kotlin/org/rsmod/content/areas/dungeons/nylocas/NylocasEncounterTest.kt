@@ -13,6 +13,7 @@ import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.loc.BoundLocInfo
+import org.rsmod.game.map.Direction
 import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
@@ -55,6 +56,19 @@ class NylocasEncounterTest {
                 }
             assertEquals(expected.toSet(), deps.npcs.map { it.coords to it.id }.toSet())
             assertEquals(expected.size, deps.npcs.count())
+            for ((slot, spawn) in NylocasWaveTable().waves[startingWave - 1].spawns) {
+                val npc = deps.npcs.single { it.coords == room.normal[spawn.source(slot)] }
+                val direction =
+                    when (slot) {
+                        NylocasSlot.WestNorth,
+                        NylocasSlot.WestSouth -> Direction.East
+                        NylocasSlot.SouthWest,
+                        NylocasSlot.SouthEast -> Direction.North
+                        NylocasSlot.EastNorth,
+                        NylocasSlot.EastSouth -> Direction.West
+                    }
+                assertEquals(direction, npc.respawnDir)
+            }
             val next = NylocasWaveTable().waves.getOrNull(startingWave)
             if (next != null) {
                 advance(ticks = next.ticksAfterPrevious - 1)

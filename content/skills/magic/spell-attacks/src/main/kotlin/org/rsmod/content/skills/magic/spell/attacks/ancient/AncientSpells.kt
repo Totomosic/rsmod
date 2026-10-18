@@ -41,6 +41,7 @@ constructor(
                 random,
                 projTypes,
                 castAnim = seqs.zaros_casting,
+                castSound = synths.ice_cast,
                 castSpot = spotanims.ice_blitz_travel,
                 impactSpot = spotanims.ice_blitz_impact,
                 hitSound = synths.ice_blitz_impact,
@@ -54,6 +55,7 @@ constructor(
                 random,
                 projTypes,
                 castAnim = seqs.zaros_vertical_casting,
+                castSound = synths.ice_cast,
                 castSpot = spotanims.ice_barrage_travel,
                 impactSpot = spotanims.ice_barrage_impact,
                 hitSound = synths.ice_barrage_impact,
@@ -69,6 +71,7 @@ constructor(
                 projTypes,
                 castAnim = seqs.zaros_vertical_casting,
                 castSpot = null,
+                castSound = synths.blood_cast,
                 impactSpot = spotanims.spell_blood_barrage_impact,
                 hitSound = synths.blood_barrage_impact,
                 splashTargets = splashTargets,
@@ -82,6 +85,7 @@ constructor(
         private val random: GameRandom,
         private val projTypes: ProjAnimTypeList,
         private val castAnim: SeqType,
+        private val castSound: SynthType,
         private val castSpot: SpotanimType?,
         private val impactSpot: SpotanimType,
         private val hitSound: SynthType,
@@ -106,6 +110,8 @@ constructor(
             // Capture the entire square at launch, even when the primary's accuracy roll misses.
             val targets = splashTargets?.find(this, primary) ?: listOf(primary)
             anim(castAnim)
+            // Play once per cast, including a splash, rather than once per AoE victim.
+            manager.soundArea(player, castSound)
             // Ancient spell travel effects play around the caster rather than flying to the target.
             if (castSpot != null) {
                 spotanim(castSpot)
@@ -115,7 +121,7 @@ constructor(
                     projTypes[projanims.magic_spell_low],
                     player.distanceTo(primary),
                 )
-            val hitDelay = 1 + clientDelay / 30
+            val hitDelay = ProjAnim.calculateHitDelay(clientDelay)
             val spell = attack.spell.obj
             var totalRolledDamage = 0
 

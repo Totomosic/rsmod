@@ -126,7 +126,7 @@ constructor(
                     if (special) BlowpipeSpots.special else travel,
                     projectileType,
                 )
-            val (serverDelay, clientDelay) = projectile.durations
+            val (serverDelay, clientDelay) = projectile.rangedDurations
 
             // Roll while the equipped weapon still contains its dart, including the last shot.
             val damage =

@@ -53,7 +53,7 @@ import org.rsmod.plugin.scripts.PluginScript
 class TonalzticsOfRalosTest {
     @ParameterizedTest
     @CsvSource("1, false", "3, false", "5, false", "9, false", "1, true", "9, true")
-    fun `both hits land together one tick after melee regardless of distance`(
+    fun `both hits land together two ticks after firing regardless of distance`(
         distance: Int,
         playerTarget: Boolean,
         state: GameTestState,

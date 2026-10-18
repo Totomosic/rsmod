@@ -72,7 +72,7 @@ constructor(
                 slot = constants.spotanim_slot_combat,
             )
             val projectile = manager.spawnProjectile(this, primary, travel, projectileType)
-            val (serverDelay, clientDelay) = projectile.durations
+            val (serverDelay, clientDelay) = projectile.rangedDurations
             manager.soundArea(
                 primary,
                 BlackChinchompaSynths.explode,

@@ -207,7 +207,7 @@ constructor(
         spotanim(launchSpotanim, height = 96, slot = constants.spotanim_slot_combat)
 
         val projanim = manager.spawnProjectile(player, npc, travelSpotanim, projanimType)
-        val (serverDelay, clientDelay) = projanim.durations
+        val (serverDelay, clientDelay) = projanim.rangedDurations
 
         if (usingThrown) {
             ammunition.useThrownWeapon(player, righthandType, npc.coords, dropDelay = serverDelay)

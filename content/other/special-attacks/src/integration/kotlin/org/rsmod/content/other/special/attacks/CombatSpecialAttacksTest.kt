@@ -4,9 +4,13 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
@@ -19,6 +23,7 @@ import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.npcs
+import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.walktriggers
@@ -29,6 +34,9 @@ import org.rsmod.api.freeze.remainingFreezeCycles
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.isProtectionPrayerDisabled
+import org.rsmod.api.player.quiver
+import org.rsmod.api.player.righthand
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackModule as ApiSpecialAttackModule
 import org.rsmod.api.specials.SpecialAttackRegistry
@@ -41,15 +49,96 @@ import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
+import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.spot.EntitySpotanim
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.walktrig.isType
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 
 @Execution(ExecutionMode.SAME_THREAD)
 class CombatSpecialAttacksTest {
+    @ParameterizedTest
+    @CsvSource(
+        "false, false, 1, 2, 3",
+        "false, false, 3, 3, 3",
+        "false, false, 9, 4, 5",
+        "true, false, 1, 2, 3",
+        "true, false, 3, 3, 3",
+        "true, false, 9, 4, 5",
+        "true, true, 1, 2, 3",
+        "true, true, 3, 3, 3",
+        "true, true, 9, 4, 5",
+    )
+    fun `bow specials apply both arrows on their respective projectile ticks`(
+        darkBow: Boolean,
+        dragonArrows: Boolean,
+        distance: Int,
+        firstTick: Int,
+        secondTick: Int,
+        state: GameTestState,
+    ) =
+        state.runSpecialsTest { deps ->
+            val npc = spawnDummy()
+            player.placeAt(npc.coords.translateZ(distance))
+            player.stats[stats.ranged] = 99
+            val weapon = if (darkBow) objs.dark_bow else special_objs.magic_shortbow
+            player.righthand = InvObj(weapon)
+            player.quiver = InvObj(if (dragonArrows) objs.dragon_arrow else objs.rune_arrow, 10)
+            random.next = HIT_ROLL
+            random.then = 5
+            random.then = HIT_ROLL
+            random.then = 5
+            random.then = 4
+            random.then = 4
+            val special = deps.registry[InvObj(weapon)] as SpecialAttack.Ranged
+            val attack =
+                CombatAttack.Ranged(
+                    InvObj(weapon),
+                    RangedAttackType.Standard,
+                    RangedAttackStyle.Rapid,
+                )
+            player.withProtectedAccess { assertTrue(special.attack(this, npc, attack)) }
+            val projectiles =
+                checkNotNull(deps.zones[ZoneKey.from(player.coords)])
+                    .filterIsInstance<MapProjAnimV2>()
+            assertEquals(
+                setOf(firstTick - 1, secondTick - 1),
+                projectiles.map { it.endTime / 30 }.toSet(),
+            )
+            val hits = mutableListOf<Pair<Hit, Int>>()
+            val iterator = checkNotNull(npc.queueList.iterator())
+            while (iterator.hasNext()) {
+                val queue = iterator.next()
+                val hit = queue.args
+                if (hit is Hit) hits += hit to queue.remainingCycles
+            }
+            iterator.cleanUp()
+            assertEquals(listOf(firstTick, secondTick), hits.map { it.second })
+            assertTrue(hits.all { it.first.damage > 0 })
+            for (tick in 1..secondTick) {
+                advance()
+                val expectedDamage = hits.filter { it.second <= tick }.sumOf { it.first.damage }
+                assertEquals(DUMMY_HITPOINTS - expectedDamage, npc.hitpoints)
+            }
+        }
+
+    @Test
+    fun GameTestState.`claw special plays all three sound phases in the world`() =
+        runSpecialsTest { deps ->
+            val npc = spawnDummy()
+            random.next = HIT_ROLL
+            useMeleeSpecial(deps, special_objs.dragon_claws, npc, MeleeAttackType.Slash)
+            val sounds =
+                deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+            assertEquals(
+                listOf(4138 to 0, 4140 to 15, 4141 to 30),
+                sounds.map { it.id to it.delay },
+            )
+        }
+
     @Test
     fun GameTestState
         .`godsword specials always hit their full boosted maximum on combat dummies`() =
@@ -400,7 +489,11 @@ class CombatSpecialAttacksTest {
 
     class SpecialsTestDependencies
     @Inject
-    constructor(val registry: SpecialAttackRegistry, val attacks: PlayerAttackManager)
+    constructor(
+        val registry: SpecialAttackRegistry,
+        val attacks: PlayerAttackManager,
+        val zones: ZoneUpdateMap,
+    )
 
     private object SpecialsTestModule : AbstractModule() {
         override fun configure() {

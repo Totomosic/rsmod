@@ -104,13 +104,13 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
             spotanim(launchSpot, height = 96, slot = constants.spotanim_slot_combat)
 
             val projanim = manager.spawnProjectile(this, target, travelSpot, projanims.arrow)
-            val (serverDelay, clientDelay) = projanim.durations
+            val (serverDelay, clientDelay) = projanim.rangedDurations
 
             ammunition.useQuiverAmmo(
                 player = player,
                 quiverType = quiverType,
                 dropCoord = target.coords,
-                dropDelay = projanim.serverCycles,
+                dropDelay = projanim.rangedServerCycles,
             )
 
             val damage = manager.rollRangedDamage(this, target, attack)
@@ -131,8 +131,8 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
 
             val proj1 = manager.spawnProjectile(this, target, travelSpot, projanims.doublearrow_one)
             val proj2 = manager.spawnProjectile(this, target, travelSpot, projanims.doublearrow_two)
-            val hitDelay1 = proj1.serverCycles
-            val hitDelay2 = proj2.serverCycles
+            val hitDelay1 = proj1.rangedServerCycles
+            val hitDelay2 = proj2.rangedServerCycles
 
             ammunition.useQuiverAmmo(
                 player = player,

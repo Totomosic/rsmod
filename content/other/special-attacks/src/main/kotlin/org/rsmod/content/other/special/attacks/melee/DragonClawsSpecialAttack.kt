@@ -9,6 +9,7 @@ import org.rsmod.api.specials.SpecialAttackManager
 import org.rsmod.api.specials.SpecialAttackMap
 import org.rsmod.api.specials.SpecialAttackRepository
 import org.rsmod.api.specials.combat.MeleeSpecialAttack
+import org.rsmod.content.other.special.attacks.configs.SpecialAttackSynths
 import org.rsmod.content.other.special.attacks.configs.special_objs
 import org.rsmod.content.other.special.attacks.configs.special_seqs
 import org.rsmod.content.other.special.attacks.configs.special_spots
@@ -57,6 +58,9 @@ class DragonClawsSpecialAttack : SpecialAttackMap {
             attack: CombatAttack.Melee,
         ) {
             anim(special_seqs.dragon_claws)
+            manager.soundArea(player, SpecialAttackSynths.clawsFirst, radius = 10)
+            manager.soundArea(player, SpecialAttackSynths.clawsSecond, delay = 15, radius = 10)
+            manager.soundArea(player, SpecialAttackSynths.clawsLast, delay = 30, radius = 10)
             spotanim(
                 spot = special_spots.dragon_claws,
                 slot = constants.spotanim_slot_combat,

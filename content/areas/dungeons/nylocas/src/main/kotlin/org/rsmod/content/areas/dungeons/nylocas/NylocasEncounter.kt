@@ -16,6 +16,7 @@ import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.loc.BoundLocInfo
+import org.rsmod.game.map.Direction
 import org.rsmod.game.region.Region
 import org.rsmod.game.type.npc.NpcTypeList
 import org.rsmod.map.CoordGrid
@@ -184,6 +185,15 @@ constructor(
     private fun spawn(encounter: Encounter, slot: NylocasSlot, spawn: NylocasSpawn) {
         val type = nylocas_npcs.incoming(spawn.size, spawn.style)
         val npc = Npc(npcTypes[type], encounter.region.normal[spawn.source(slot)])
+        npc.respawnDir =
+            when (slot) {
+                NylocasSlot.WestNorth,
+                NylocasSlot.WestSouth -> Direction.East
+                NylocasSlot.SouthWest,
+                NylocasSlot.SouthEast -> Direction.North
+                NylocasSlot.EastNorth,
+                NylocasSlot.EastSouth -> Direction.West
+            }
         npc.baseHitpointsLvl = spawn.size.hitpoints(encounter.teamSize)
         npc.hitpoints = npc.baseHitpointsLvl
         npc.mode = NpcMode.None

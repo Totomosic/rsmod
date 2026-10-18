@@ -17,6 +17,7 @@ import org.rsmod.api.specials.SpecialAttackManager
 import org.rsmod.api.specials.SpecialAttackMap
 import org.rsmod.api.specials.SpecialAttackRepository
 import org.rsmod.api.specials.combat.MeleeSpecialAttack
+import org.rsmod.content.other.special.attacks.configs.SpecialAttackSynths
 import org.rsmod.content.other.special.attacks.configs.special_objs
 import org.rsmod.content.other.special.attacks.configs.special_seqs
 import org.rsmod.events.EventBus
@@ -51,6 +52,7 @@ constructor(
             attack: CombatAttack.Melee,
         ): Boolean {
             anim(special_seqs.dinhs_bulwark)
+            manager.soundArea(player, SpecialAttackSynths.bulwark, radius = 10)
 
             if (
                 coords.level != target.coords.level ||
@@ -108,6 +110,7 @@ constructor(
             attack: CombatAttack.Melee,
         ): Boolean {
             anim(special_seqs.dinhs_bulwark)
+            manager.soundArea(player, SpecialAttackSynths.bulwark, radius = 10)
             val damage = rollBash(target, attack)
             manager.giveCombatXp(this, target, attack, damage)
             manager.queueMeleeHit(this, target, damage)

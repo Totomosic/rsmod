@@ -149,6 +149,33 @@ class BlackChinchompaTest {
                         it === explosion
                     }
                 )
+                val impactTick = 1 + projectile.endTime / 30
+                if (target is Npc) {
+                    assertEquals(impactTick, target.pendingHits().single().second)
+                }
+                if (accuracyRoll == 0) {
+                    val initialHp =
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        }
+                    if (impactTick > 1) advance(ticks = impactTick - 1)
+                    assertEquals(
+                        initialHp,
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        },
+                    )
+                    advance()
+                    assertEquals(
+                        initialHp - 5,
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        },
+                    )
+                }
             }
         }
     }

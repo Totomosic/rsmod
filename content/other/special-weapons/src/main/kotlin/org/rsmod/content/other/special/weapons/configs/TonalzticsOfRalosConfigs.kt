@@ -29,7 +29,8 @@ internal object TonalzticsProjBuilds : ProjAnimBuilder() {
             angle = 0
             lengthAdjustment = 30
             progress = 11
-            // One client tick at every distance; damage processes one tick after melee.
+            // One game tick of travel at every distance; ranged hit delay includes another queue
+            // tick.
             stepMultiplier = 0
         }
     }

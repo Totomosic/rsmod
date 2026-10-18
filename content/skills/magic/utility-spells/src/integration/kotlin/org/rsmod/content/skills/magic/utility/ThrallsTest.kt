@@ -4,8 +4,11 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import java.nio.file.Path
+import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.openrs2.cache.Cache
 import org.rsmod.api.cache.Js5Archives
@@ -22,6 +25,7 @@ import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.player.stat.prayerLvl
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.spells.runes.combo.ComboRuneRepository
@@ -51,8 +55,82 @@ import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.type.seq.UnpackedSeqType
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 
 class ThrallsTest {
+    @ParameterizedTest
+    @CsvSource("false, 1, 1", "false, 6, 1", "true, 1, 1", "true, 6, 2")
+    fun `ghost and skeleton hits follow each launched projectile impact tick`(
+        skeleton: Boolean,
+        distance: Int,
+        impactTick: Int,
+        state: GameTestState,
+    ) =
+        state.runThrallTest { deps ->
+            cast(if (skeleton) thrall_components.skeleton else thrall_components.ghost)
+            val summoned = thrall(deps)
+            val target = spawnNpc(summoned.coords.translateZ(distance), targetType)
+            val launches = mutableListOf<Pair<Int, Int>>()
+            val impacts = mutableListOf<Int>()
+            var step = 0
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                launches +=
+                    deps.zones[ZoneKey.from(summoned.coords)]
+                        ?.filterIsInstance<MapProjAnimV2>()
+                        .orEmpty()
+                        .map { step to it.endTime }
+            }
+            eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, target.id.toLong()) {
+                if (npc === target) impacts += step
+            }
+            random.next = 3
+            eventBus.publish(PlayerAttackTarget(player, target))
+            while (launches.isEmpty() && step < 8) {
+                step++
+                advance()
+            }
+            val launch = launches.single()
+            assertEquals(if (skeleton) 40 + 5 * distance else 10 + 5 * distance, launch.second)
+            assertTrue(impacts.isEmpty())
+            repeat(impactTick - 1) {
+                step++
+                advance()
+                assertTrue(impacts.isEmpty())
+            }
+            step++
+            advance()
+            assertEquals(listOf(launch.first + impactTick), impacts)
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2])
+    fun `each thrall style plays its own summon sound once on a successful cast`(
+        style: Int,
+        state: GameTestState,
+    ) =
+        state.runThrallTest { deps ->
+            val buttons =
+                listOf(
+                    thrall_components.ghost,
+                    thrall_components.skeleton,
+                    thrall_components.zombie,
+                )
+            val ids = listOf(5063, 5048, 5058)
+            val sounds = mutableListOf<SoundArea>()
+            // Capture before the post-tick world flush clears the area-sound queue.
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                sounds +=
+                    deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+            }
+            cast(buttons[style])
+            assertEquals(ids[style], sounds.single().id)
+            assertEquals(0, sounds.single().delay)
+            // The rejected cooldown cast must not replay the summon sound.
+            sounds.clear()
+            cast(buttons[style])
+            assertTrue(sounds.isEmpty())
+        }
+
     @Test
     fun GameTestState
         .`thrall stops launching attacks at exactly twelve ticks of player inactivity`() =
@@ -495,7 +573,9 @@ class ThrallsTest {
     private fun GameTestScope.thrall(deps: Dependencies): Npc =
         deps.npcs.single { it.id in THRALL_IDS }
 
-    class Dependencies @Inject constructor(val spells: MagicSpellRegistry, val npcs: NpcList)
+    class Dependencies
+    @Inject
+    constructor(val spells: MagicSpellRegistry, val npcs: NpcList, val zones: ZoneUpdateMap)
 
     private fun GameTestState.runThrallTest(test: GameTestScope.(Dependencies) -> Unit) =
         runInjectedGameTest(

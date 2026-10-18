@@ -192,6 +192,8 @@ class ToxicBlowpipeTest {
                 )
                 if (target is Npc) {
                     val hits = target.pendingHits()
+                    assertEquals(1 + normal.endTime / 30, hits.first().second)
+                    assertEquals(1 + special.endTime / 30, hits.last().second)
                     assertEquals(
                         hits.first().second + if (distance > 1) 1 else 0,
                         hits.last().second,
@@ -206,6 +208,39 @@ class ToxicBlowpipeTest {
                 assertEquals(0, sound.delay)
                 assertEquals(ZoneGrid.from(player.coords).x, sound.xInZone)
                 assertEquals(ZoneGrid.from(player.coords).z, sound.zInZone)
+                val initialHp =
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    }
+                val normalDelay = 1 + normal.endTime / 30
+                val specialDelay = 1 + special.endTime / 30
+                if (normalDelay > 1) advance(ticks = normalDelay - 1)
+                assertEquals(
+                    initialHp,
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    },
+                )
+                advance()
+                assertEquals(
+                    initialHp - if (normalDelay == specialDelay) 14 else 7,
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    },
+                )
+                if (specialDelay > normalDelay) {
+                    advance(ticks = specialDelay - normalDelay)
+                    assertEquals(
+                        initialHp - 14,
+                        when (target) {
+                            is Npc -> target.hitpoints
+                            is Player -> target.hitpoints
+                        },
+                    )
+                }
             }
         }
     }

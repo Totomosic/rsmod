@@ -11,6 +11,7 @@ dependencies {
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(projects.api.pluginCommons)
     integrationImplementation(projects.api.specials)
+    integrationImplementation(projects.api.registry)
 }
 
 // These game tests share a server instance and its listening sockets.

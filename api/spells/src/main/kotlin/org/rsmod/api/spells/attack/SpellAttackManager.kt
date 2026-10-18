@@ -192,7 +192,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         spell: ObjType,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
     ): Hit =
         manager.queueMagicHit(
             source = source.player,
@@ -210,7 +210,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         target: PathingEntity,
         spell: ObjType,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
     ): Hit =
         manager.queueSplashHit(
             source = source.player,
@@ -257,6 +257,16 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
             castSound = castSound,
             soundRadius = soundRadius,
         )
+
+    /** @see [PlayerAttackManager.soundArea] */
+    public fun soundArea(
+        source: PathingEntity,
+        synth: SynthType,
+        delay: Int = 0,
+        loops: Int = 1,
+        radius: Int = 8,
+        size: Int = 0,
+    ): Unit = manager.soundArea(source.coords, synth, delay, loops, radius, size)
 
     /** @see [PlayerAttackManager.spawnProjectile] */
     public fun spawnProjectile(

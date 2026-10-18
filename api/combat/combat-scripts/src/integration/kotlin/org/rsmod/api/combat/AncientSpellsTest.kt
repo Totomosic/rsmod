@@ -6,10 +6,12 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.PlayerAttackTarget
@@ -35,8 +37,11 @@ import org.rsmod.api.freeze.isFrozen
 import org.rsmod.api.freeze.remainingFreezeCycles
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
+import org.rsmod.api.npc.events.NpcHitEvents
+import org.rsmod.api.player.events.PlayerHitEvents
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.random.GameRandom
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
@@ -86,6 +91,7 @@ import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.type.util.ParamMap
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
@@ -93,6 +99,108 @@ import org.rsmod.routefinder.flag.CollisionFlag
 // LOS tests temporarily change shared collision flags; keep casts in this class sequential.
 @Execution(ExecutionMode.SAME_THREAD)
 class AncientSpellsTest {
+    @ParameterizedTest
+    @CsvSource(
+        "wind, 1, 1",
+        "wind, 2, 2",
+        "wind, 5, 3",
+        "wind, 8, 4",
+        "blitz, 1, 1",
+        "blitz, 2, 2",
+        "blitz, 5, 3",
+        "blitz, 8, 4",
+        "ice, 1, 1",
+        "ice, 2, 2",
+        "ice, 5, 3",
+        "ice, 8, 4",
+        "blood, 1, 1",
+        "blood, 2, 2",
+        "blood, 5, 3",
+        "blood, 8, 4",
+    )
+    fun `standard and ancient hits and splashes resolve on their impact tick`(
+        spell: String,
+        distance: Int,
+        impactTick: Int,
+        state: GameTestState,
+    ) {
+        for (playerTarget in listOf(false, true)) {
+            for (splash in listOf(false, true)) {
+                state.runAncientTest { deps ->
+                    val coords = CoordGrid(3200, 3200)
+                    val target =
+                        if (playerTarget)
+                            registerPlayer(coords).also {
+                                it.setBaseLevel(stats.hitpoints, 99)
+                                it.setCurrentLevel(stats.hitpoints, 99)
+                            }
+                        else spawnNpc(coords, iceTarget())
+                    player.placeAt(coords.translateZ(distance))
+                    val spellObj =
+                        when (spell) {
+                            "wind" -> objs.spell_wind_strike
+                            "blitz" -> objs.spell_ice_blitz
+                            "ice" -> objs.spell_ice_barrage
+                            else -> objs.spell_blood_barrage
+                        }
+                    VarPlayerIntMapSetter.set(
+                        player,
+                        varbits.spellbook,
+                        if (spell == "wind") 0 else 1,
+                    )
+                    val impacts = mutableListOf<Int>()
+                    when (target) {
+                        is Npc ->
+                            eventBus.subscribeKeyed(
+                                NpcHitEvents.Impact::class.java,
+                                target.id.toLong(),
+                            ) {
+                                if (npc === target) impacts += hit.damage
+                            }
+                        is Player ->
+                            eventBus.subscribeUnbound(PlayerHitEvents.Impact::class.java) {
+                                if (player === target) impacts += damage
+                            }
+                    }
+                    random.next = if (splash) 9999 else 0
+                    if (!splash) random.then = 1
+                    cast(deps, target, spellObj)
+                    assertTrue(
+                        target.pendingSpotanims.any {
+                            EntitySpotanim(it).delay == 46 + 10 * distance
+                        }
+                    )
+                    if (impactTick > 1) advance(ticks = impactTick - 1)
+                    assertTrue(impacts.isEmpty())
+                    advance()
+                    assertEquals(listOf(if (splash) 0 else 1), impacts)
+                }
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource("0, false", "1, false", "2, false", "0, true", "1, true", "2, true")
+    fun `ancients emit one shared cast sound even with multiple victims or splashes`(
+        spellIndex: Int,
+        splash: Boolean,
+        state: GameTestState,
+    ) =
+        state.runAncientTest { deps ->
+            val primary = spawnBarragePrimary()
+            val secondary = spawnNpc(primary.coords.translateX(1), iceTarget())
+            markMulti(deps, listOf(primary, secondary))
+            val spells =
+                listOf(objs.spell_ice_blitz, objs.spell_ice_barrage, objs.spell_blood_barrage)
+            random.next = if (splash) 9999 else 0
+            cast(deps, primary, spells[spellIndex])
+            val sounds =
+                deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+            val sound = sounds.single { it.id == if (spellIndex == 2) 106 else 171 }
+            assertEquals(0, sound.delay)
+            assertEquals(1, sound.loops)
+        }
+
     @ParameterizedTest
     @ValueSource(ints = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     fun `utility casts preserve ongoing attacks and their timing`(
@@ -1143,6 +1251,7 @@ class AncientSpellsTest {
         val areas: AreaIndex,
         val collision: CollisionFlagMap,
         val validator: RayCastValidator,
+        val zones: ZoneUpdateMap,
     )
 
     private object TestModule : AbstractModule() {

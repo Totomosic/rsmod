@@ -4,8 +4,8 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
-import net.rsprot.protocol.game.outgoing.sound.SynthSound
 import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
@@ -22,6 +22,7 @@ import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
+import org.rsmod.api.config.refs.spotanims
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varobjs
 import org.rsmod.api.config.refs.varps
@@ -61,34 +62,89 @@ import org.rsmod.plugin.scripts.PluginScript
 @Execution(ExecutionMode.SAME_THREAD)
 class EyeOfAyakTest {
     @ParameterizedTest
-    @CsvSource("1, 1", "2, 1", "3, 2", "4, 2", "5, 2", "6, 2", "7, 2", "8, 2")
-    fun `projectile and damage follow the Eye of Ayak hit delay table`(
+    @CsvSource(
+        "false, 1, 1",
+        "false, 2, 1",
+        "false, 3, 2",
+        "false, 4, 2",
+        "false, 5, 2",
+        "false, 6, 2",
+        "false, 7, 2",
+        "false, 8, 2",
+        "true, 1, 2",
+        "true, 2, 3",
+        "true, 3, 3",
+        "true, 4, 3",
+        "true, 5, 4",
+        "true, 6, 4",
+        "true, 7, 4",
+        "true, 8, 5",
+    )
+    fun `Eye of Ayak and Shadow damage follow their projectile impact ticks`(
+        shadow: Boolean,
         distance: Int,
         hitDelay: Int,
         state: GameTestState,
-    ) =
-        state.runEyeTest { deps ->
-            val npc = spawnDummy()
-            player.placeAt(npc.coords.translateZ(distance))
-            equipEye(deps)
-            random.next = HIT_ROLL
-            random.then = 5
-            cast(deps, npc)
-            val projectile =
-                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
-                    .filterIsInstance<MapProjAnimV2>()
-                    .single()
-            assertEquals(EyeOfAyakSpots.travel.id, projectile.id)
-            assertEquals(hitDelay, projectile.endTime / 30)
-            val queued = npc.pendingHits().single()
-            // NPCs process before players, adding one processing tick to the wiki's hit delay.
-            assertEquals(hitDelay + 1, queued.second)
-            assertTrue(projectile.startTime < projectile.endTime)
-            advance(ticks = hitDelay)
-            assertEquals(DUMMY_HITPOINTS, npc.hitpoints)
-            advance()
-            assertEquals(DUMMY_HITPOINTS - 5, npc.hitpoints)
+    ) {
+        for (playerTarget in listOf(false, true)) {
+            state.runEyeTest { deps ->
+                val target =
+                    if (playerTarget) {
+                        registerPlayer(CoordGrid(3200, 3200)).also {
+                            it.setBaseLevel(stats.hitpoints, 99)
+                            it.setCurrentLevel(stats.hitpoints, 99)
+                        }
+                    } else spawnDummy()
+                player.placeAt(target.coords.translateZ(distance))
+                if (shadow) {
+                    player.worn[Wearpos.RightHand.slot] = InvObj(objs.tumekens_shadow_uncharged)
+                    deps.objCharges.addCharges(
+                        player.worn,
+                        Wearpos.RightHand.slot,
+                        10,
+                        varobjs.tumeken_charges,
+                        20_000,
+                    )
+                    player.stats[stats.magic] = 99
+                } else equipEye(deps)
+                random.next = HIT_ROLL
+                random.then = 5
+                cast(deps, target)
+                val projectile =
+                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                        .filterIsInstance<MapProjAnimV2>()
+                        .single()
+                assertEquals(
+                    if (shadow) spotanims.tumekens_shadow_travel.id else EyeOfAyakSpots.travel.id,
+                    projectile.id,
+                )
+                assertEquals(hitDelay, projectile.endTime / 30)
+                if (target is Npc) assertEquals(hitDelay, target.pendingHits().single().second)
+                assertTrue(projectile.startTime < projectile.endTime)
+                val startingHp =
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    }
+                if (hitDelay > 1) advance(ticks = hitDelay - 1)
+                assertEquals(
+                    startingHp,
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    },
+                )
+                advance()
+                assertEquals(
+                    startingHp - 5,
+                    when (target) {
+                        is Npc -> target.hitpoints
+                        is Player -> target.hitpoints
+                    },
+                )
+            }
         }
+    }
 
     @ParameterizedTest
     @CsvSource("0", "9999")
@@ -102,7 +158,11 @@ class EyeOfAyakTest {
             random.next = accuracyRoll
             random.then = 5
             cast(deps, npc)
-            assertEquals(178, client.single<SynthSound>().id)
+            val sound =
+                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                    .filterIsInstance<SoundArea>()
+                    .single { it.id == 178 }
+            assertEquals(0, sound.delay)
         }
 
     @ParameterizedTest

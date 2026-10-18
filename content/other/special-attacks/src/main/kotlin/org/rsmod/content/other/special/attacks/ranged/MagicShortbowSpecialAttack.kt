@@ -82,24 +82,24 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
             val second = rollArrow(target, attack)
             manager.giveCombatXp(this, target, attack, first + second)
 
-            ammunition.useQuiverAmmo(player, quiverType, target.coords, proj1.serverCycles)
+            ammunition.useQuiverAmmo(player, quiverType, target.coords, proj1.rangedServerCycles)
             manager.queueRangedHit(
                 source = this,
                 target = target,
                 ammo = quiverType,
                 damage = first,
                 clientDelay = proj1.clientCycles,
-                hitDelay = proj1.serverCycles,
+                hitDelay = proj1.rangedServerCycles,
             )
 
-            ammunition.useQuiverAmmo(player, quiverType, target.coords, proj2.serverCycles)
+            ammunition.useQuiverAmmo(player, quiverType, target.coords, proj2.rangedServerCycles)
             manager.queueRangedHit(
                 source = this,
                 target = target,
                 ammo = quiverType,
                 damage = second,
                 clientDelay = proj2.clientCycles,
-                hitDelay = proj2.serverCycles,
+                hitDelay = proj2.rangedServerCycles,
             )
 
             if (player.quiver?.count == 1) {

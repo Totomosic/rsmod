@@ -289,7 +289,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         ammo: ObjType?,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateRangedHitDelay(clientDelay),
     ): Hit =
         manager.queueRangedHit(
             source = source.player,
@@ -375,7 +375,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         target: PathingEntity,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
         spell: ObjType? = null,
     ): Hit =
         manager.queueMagicHit(
@@ -414,7 +414,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         source: ProtectedAccess,
         target: PathingEntity,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
         spell: ObjType? = null,
     ): Hit =
         manager.queueSplashHit(

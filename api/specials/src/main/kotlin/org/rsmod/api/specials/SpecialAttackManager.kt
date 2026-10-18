@@ -266,7 +266,7 @@ constructor(
         ammo: ObjType?,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateRangedHitDelay(clientDelay),
     ): Hit =
         manager.queueRangedHit(
             source = source.player,
@@ -341,7 +341,7 @@ constructor(
         target: PathingEntity,
         damage: Int,
         clientDelay: Int,
-        hitDelay: Int = 1 + (clientDelay / 30),
+        hitDelay: Int = ProjAnim.calculateHitDelay(clientDelay),
         spell: ObjType? = null,
     ): Hit =
         manager.queueMagicHit(

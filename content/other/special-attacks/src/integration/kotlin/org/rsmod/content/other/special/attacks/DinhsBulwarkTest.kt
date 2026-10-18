@@ -6,6 +6,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.rsmod.annotations.InternalApi
 import org.rsmod.api.combat.commons.CombatAttack
@@ -22,6 +23,7 @@ import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.stat
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackModule as ApiSpecialAttackModule
 import org.rsmod.api.specials.SpecialAttackRegistry
@@ -37,11 +39,26 @@ import org.rsmod.game.hit.Hit
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.obj.ObjType
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 class DinhsBulwarkTest {
+    @Test
+    fun GameTestState.`both bulwark variants play one shared bash sound per special`() {
+        for (weapon in listOf(special_objs.dinhs_bulwark, special_objs.dinhs_blazing_bulwark)) {
+            runBulwarkTest { deps ->
+                val npc = spawnNpc(center.translateZ(1), dummy)
+                random.next = 0
+                useSpecial(deps, npc, weapon)
+                val sounds =
+                    deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+                assertEquals(listOf(3454 to 0), sounds.map { it.id to it.delay })
+            }
+        }
+    }
+
     @Test
     fun GameTestState
         .`primary gets two independent full damage hits and nearby gets one on the same tick`() =
@@ -386,6 +403,7 @@ class DinhsBulwarkTest {
         val areas: AreaIndex,
         val accuracy: PvNMeleeAccuracy,
         val collision: CollisionFlagMap,
+        val zones: ZoneUpdateMap,
     )
 
     private object TestModule : AbstractModule() {

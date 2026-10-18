@@ -54,6 +54,7 @@ import org.rsmod.game.type.obj.ObjType
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.type.seq.SeqType
 import org.rsmod.game.type.spot.SpotanimType
+import org.rsmod.game.type.synth.SynthType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
@@ -136,6 +137,7 @@ constructor(
         npc.respawns = false
         npc.anim(style.spawn)
         npc.spotanim(style.impact)
+        world.soundArea(npc, style.summonSound, radius = 10)
         state.thrall = npc
         state.style = style
         // Apply the doubled duration from master Combat Achievements to every player.
@@ -288,6 +290,7 @@ constructor(
         val attack: SeqType,
         val cast: SpotanimType,
         val impact: SpotanimType,
+        val summonSound: SynthType,
     ) {
         Melee(
             HitType.Melee,
@@ -296,6 +299,7 @@ constructor(
             thrall_seqs.zombieAttack,
             thrall_spots.zombieCast,
             thrall_spots.zombieSpawn,
+            thrall_synths.zombie,
         ),
         Ranged(
             HitType.Ranged,
@@ -304,6 +308,7 @@ constructor(
             thrall_seqs.skeletonAttack,
             thrall_spots.skeletonCast,
             thrall_spots.skeletonSpawn,
+            thrall_synths.skeleton,
         ),
         Magic(
             HitType.Magic,
@@ -312,6 +317,7 @@ constructor(
             thrall_seqs.ghostAttack,
             thrall_spots.ghostCast,
             thrall_spots.ghostSpawn,
+            thrall_synths.ghost,
         ),
     }
 
@@ -320,6 +326,16 @@ constructor(
         var Player.thrallActive by intVarBit(thrall_varbits.active)
         var Player.thrallCooldown by intVarBit(thrall_varbits.cooldown)
     }
+}
+
+internal object thrall_synths {
+    // Cache sounds absent from the synth symbol table; IDs from the spell audio metadata.
+    // https://oldschool.runescape.wiki/w/File:Resurrect_Greater_Ghost.ogg
+    // https://oldschool.runescape.wiki/w/File:Resurrect_Greater_Skeleton.ogg
+    // https://oldschool.runescape.wiki/w/File:Resurrect_Greater_Zombie.ogg
+    val ghost = SynthType(5063, "resurrect_greater_ghost_cast_and_fire")
+    val skeleton = SynthType(5048, "resurrect_greater_skele_cast_and_fire")
+    val zombie = SynthType(5058, "resurrect_greater_zombie_cast_and_fire")
 }
 
 object thrall_components : ComponentReferences() {

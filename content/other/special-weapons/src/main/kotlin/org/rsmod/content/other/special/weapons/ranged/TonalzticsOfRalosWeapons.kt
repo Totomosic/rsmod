@@ -50,10 +50,16 @@ class TonalzticsOfRalosWeapons : WeaponMap {
                         ammo = null,
                         damage = damage,
                         clientDelay = projectile.clientCycles,
-                        hitDelay = projectile.serverCycles,
+                        hitDelay = projectile.rangedServerCycles,
                     )
                 } else {
-                    manager.queueRangedDamage(this, target, null, damage, projectile.serverCycles)
+                    manager.queueRangedDamage(
+                        this,
+                        target,
+                        null,
+                        damage,
+                        projectile.rangedServerCycles,
+                    )
                 }
             }
             // The charged weapon stays equipped and does not use quiver ammunition.

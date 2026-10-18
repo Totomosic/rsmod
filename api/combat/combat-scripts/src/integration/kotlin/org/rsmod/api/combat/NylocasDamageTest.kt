@@ -143,8 +143,9 @@ class NylocasDamageTest {
                 }
             melee.telejump(room.normal[CoordGrid(3291, 4248)])
             player.telejump(room.normal[CoordGrid(3290, 4248)])
-            // Retaining the melee body fills the cap at the wave 22 check.
-            repeat(17) { spawnNylo(deps, room, NylocasStyle.Melee).aiTimer(0) }
+            // Keep the cap full after the mage's corrected projectile timing removes it earlier.
+            // Retaining the melee body must still block wave 22's first admission check.
+            repeat(18) { spawnNylo(deps, room, NylocasStyle.Melee).aiTimer(0) }
             val attacks = mutableListOf<Pair<Int, Npc>>()
             val impacts = mutableListOf<Pair<Int, Int>>()
             var removalCycle = -1

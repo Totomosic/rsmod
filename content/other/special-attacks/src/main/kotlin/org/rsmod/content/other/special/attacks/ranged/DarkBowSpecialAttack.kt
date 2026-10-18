@@ -102,8 +102,8 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
         ) {
             val launchSpot = quiverType.paramOrNull(params.proj_launch_double)
             anim(seqs.human_bow)
-            soundSynth(synths.darkbow_doublefire)
-            soundSynth(synths.darkbow_shadow_attack)
+            manager.soundArea(player, synths.darkbow_doublefire, radius = 10)
+            manager.soundArea(player, synths.darkbow_shadow_attack, radius = 10)
             spotanim(launchSpot, height = 96, slot = constants.spotanim_slot_combat)
 
             val descentTravel = spotanims.darkbow_generic_smoke_arrow_flight
@@ -124,8 +124,8 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
 
             val damage =
                 calculateDamage(target, attack, damageRange = 5..Int.MAX_VALUE, multiplier = 1.3)
-            val hitDelay1 = proj1.serverCycles
-            val hitDelay2 = proj2.serverCycles
+            val hitDelay1 = proj1.rangedServerCycles
+            val hitDelay2 = proj2.rangedServerCycles
 
             manager.giveCombatXp(this, target, attack, damage.total)
 
@@ -160,8 +160,8 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
         ) {
             val launchSpot = quiverType.paramOrNull(params.proj_launch_double)
             anim(seqs.human_bow)
-            soundSynth(synths.darkbow_doublefire)
-            soundSynth(synths.darkbow_dragon_attack)
+            manager.soundArea(player, synths.darkbow_doublefire, radius = 10)
+            manager.soundArea(player, synths.darkbow_dragon_attack, radius = 10)
             spotanim(launchSpot, height = 96, slot = constants.spotanim_slot_combat)
 
             val descentTravel = spotanims.darkbow_dragon_head_flying_projanim
@@ -181,8 +181,8 @@ constructor(private val objTypes: ObjTypeList, private val ammunition: RangedAmm
             target.spotanim(descentImpact, height = 96, delay = clientDelay2)
 
             val damage = calculateDamage(target, attack, damageRange = 8..48, multiplier = 1.5)
-            val hitDelay1 = proj1.serverCycles
-            val hitDelay2 = proj2.serverCycles
+            val hitDelay1 = proj1.rangedServerCycles
+            val hitDelay2 = proj2.rangedServerCycles
 
             manager.giveCombatXp(this, target, attack, damage.total)
 
