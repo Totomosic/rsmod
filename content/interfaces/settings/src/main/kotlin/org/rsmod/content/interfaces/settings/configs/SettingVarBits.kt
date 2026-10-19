@@ -8,4 +8,5 @@ object SettingVarBits : VarBitReferences() {
     val panel_tab = find("settings_side_panel_tab", 92479944086622)
     val hotkey_cannot_close_sidepanel = find("hotkey_cannot_close_sidepanel")
     val side_transparency = find("side_transparency")
+    val chatbox_scrollbarside = find("chatbox_scrollbarside")
 }
