@@ -136,6 +136,9 @@ constructor(
                 else member.statSub(stats.hitpoints, -delta, 0)
             }
         }
+        for (member in members) {
+            setZeal(member, options.zeal)
+        }
         sync(raid)
         for (member in members) {
             member.mes(
@@ -262,7 +265,14 @@ constructor(
         }
     }
 
+    private fun setZeal(player: Player, enabled: Boolean) {
+        VarPlayerIntMapSetter.set(player, varps.zeal, if (enabled) 1 else 0)
+        // The custom client uses console messages for local-only display state.
+        player.mes("localscape:zeal:${if (enabled) 1 else 0}", ChatType.Console)
+    }
+
     private fun clear(player: Player) {
+        setZeal(player, false)
         player.set(tob_varbits.party_status, 0)
         player.set(tob_varbits.party_slot, 0)
         tob_varbits.party_hp.forEach { player.set(it, 0) }

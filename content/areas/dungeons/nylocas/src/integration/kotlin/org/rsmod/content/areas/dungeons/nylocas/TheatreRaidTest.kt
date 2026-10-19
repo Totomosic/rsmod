@@ -6,8 +6,12 @@ import net.rsprot.protocol.game.outgoing.misc.player.RunClientScript
 import net.rsprot.protocol.game.outgoing.varp.VarpLarge
 import net.rsprot.protocol.game.outgoing.varp.VarpSmall
 import org.junit.jupiter.api.Test
+import org.rsmod.api.combat.formulas.accuracy.melee.MeleeAccuracyOperations
+import org.rsmod.api.combat.formulas.maxhit.melee.MeleeMaxHitOperations
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.stats
+import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.testing.GameTestState
@@ -19,6 +23,47 @@ class TheatreRaidTest {
     class Dependencies
     @Inject
     constructor(val raid: TheatreRaid, val regions: RegionRegistry, val npcs: NpcList)
+
+    @Test
+    fun GameTestState.`Zeal upgrades active Piety for the party and clears on leaving`() =
+        runInjectedGameTest(Dependencies::class, null, TheatreRaid::class) { deps ->
+            val room = createRegion(NylocasRoom.template)
+            player.telejump(room.normal[NylocasRoom.bridge])
+            val guest = registerPlayer(coords = player.coords)
+            advance(ticks = 2)
+            for (member in listOf(player, guest)) {
+                for (stat in listOf(stats.attack, stats.strength, stats.defence)) {
+                    member.setBaseLevel(stat, 100)
+                    member.setCurrentLevel(stat, 100)
+                }
+                member.setVarBit(varbits.piety, 1)
+                assertEquals(128, MeleeAccuracyOperations.calculateEffectiveAttack(member, null))
+                assertEquals(131, MeleeMaxHitOperations.calculateEffectiveStrength(member, null))
+            }
+            deps.raid.start(player, TheatreRaidOptions(zeal = true))
+            for (member in listOf(player, guest)) {
+                assertEquals(1, member.vars[varps.zeal])
+                assertEquals(133, MeleeAccuracyOperations.calculateEffectiveAttack(member, null))
+                assertEquals(136, MeleeMaxHitOperations.calculateEffectiveStrength(member, null))
+                assertEquals(133, MeleeAccuracyOperations.calculateEffectiveDefence(member, null))
+            }
+            // The option only modifies Piety; it does not grant a passive stat bonus.
+            guest.setVarBit(varbits.piety, 0)
+            assertEquals(108, MeleeAccuracyOperations.calculateEffectiveAttack(guest, null))
+            assertEquals(108, MeleeMaxHitOperations.calculateEffectiveStrength(guest, null))
+            guest.setVarBit(varbits.piety, 1)
+            guest.telejump(CoordGrid(3222, 3218, 0))
+            advance()
+            assertEquals(0, guest.vars[varps.zeal])
+            assertEquals(128, MeleeAccuracyOperations.calculateEffectiveAttack(guest, null))
+            assertEquals(131, MeleeMaxHitOperations.calculateEffectiveStrength(guest, null))
+            assertEquals(1, player.vars[varps.zeal])
+            eventBus.publish(SessionStateEvent.Logout(player))
+            assertEquals(0, player.vars[varps.zeal])
+            player.setVarp(varps.zeal, 1)
+            eventBus.publish(SessionStateEvent.Login(player))
+            assertEquals(0, player.vars[varps.zeal])
+        }
 
     @Test
     fun GameTestState

@@ -98,6 +98,7 @@ object BaseVarps : VarpReferences() {
     val freeze_immunity_end = find("freeze_immunity_end")
     val freeze_source = find("freeze_source")
     val protect_prayers_disabled_end = find("protect_prayers_disabled_end")
+    val zeal = find("zeal")
     val generic_temp_coords_65529 = find("generic_temp_coords_65529")
     val inv_capacity_65530 = find("inv_capacity_65530")
     val generic_storage_65531 = find("generic_storage_65531")

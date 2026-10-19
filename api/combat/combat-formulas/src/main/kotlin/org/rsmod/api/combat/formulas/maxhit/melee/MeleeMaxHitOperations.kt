@@ -249,7 +249,7 @@ public object MeleeMaxHitOperations {
             this[varbits.superhuman_strength] == 1 -> 1.1
             this[varbits.ultimate_strength] == 1 -> 1.15
             this[varbits.chivalry] == 1 -> 1.18
-            this[varbits.piety] == 1 -> 1.23
+            this[varbits.piety] == 1 -> if (this[varps.zeal] == 1) 1.28 else 1.23
             else -> 1.0
         }
 

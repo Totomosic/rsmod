@@ -32,6 +32,7 @@ internal object VarpBuilds : VarpBuilder() {
         build("freeze_immunity_end") { temporary = true }
         build("freeze_source") { temporary = true }
         build("protect_prayers_disabled_end") { temporary = true }
+        build("zeal") { temporary = true }
 
         build("temp_restore_65527")
         build("generic_temp_coords_65529") { temporary = true }

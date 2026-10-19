@@ -80,16 +80,18 @@ class NylocasDevelopmentCommandTest {
                 assertFalse(deps.raid.isStarted(player, room))
                 assertEquals(99, guest.hitpoints)
             }
-            deps.handler.handle(player, ClientCheat("theatrestart 21 maxhit-slow hp250"))
+            deps.handler.handle(player, ClientCheat("theatrestart 21 maxhit-slow hp250 zeal"))
             assertEquals(
-                TheatreRaidOptions(21, NyloMaxHit.SlowWeapons, true),
+                TheatreRaidOptions(21, NyloMaxHit.SlowWeapons, true, true),
                 deps.raid.options(room),
             )
             for (member in listOf(player, guest)) {
+                assertEquals(1, member.vars[varps.zeal])
                 assertEquals(250, member.hitpoints)
                 assertEquals(99, member.baseHitpointsLvl)
             }
             assertEquals(99, outsider.hitpoints)
+            assertEquals(0, outsider.vars[varps.zeal])
             guest.setCurrentLevel(stats.hitpoints, 200)
             deps.handler.handle(player, ClientCheat("theatrestart 1 maxhit-all hp250"))
             assertEquals(200, guest.hitpoints)

@@ -109,9 +109,9 @@ constructor(
             return null
         }
         val flags = cheat.args.drop(1)
-        val validFlags = setOf("maxhit-all", "maxhit-slow", "hp250")
+        val validFlags = setOf("maxhit-all", "maxhit-slow", "hp250", "zeal")
         if (flags.any { it !in validFlags } || ("maxhit-all" in flags && "maxhit-slow" in flags)) {
-            cheat.player.mes("Use [starting wave] [maxhit-all OR maxhit-slow] [hp250].")
+            cheat.player.mes("Use [starting wave] [maxhit-all OR maxhit-slow] [hp250] [zeal].")
             return null
         }
         val maxHit =
@@ -120,7 +120,7 @@ constructor(
                 "maxhit-slow" in flags -> NyloMaxHit.SlowWeapons
                 else -> NyloMaxHit.Off
             }
-        return TheatreRaidOptions(wave, maxHit, "hp250" in flags)
+        return TheatreRaidOptions(wave, maxHit, "hp250" in flags, "zeal" in flags)
     }
 
     private fun teleport(

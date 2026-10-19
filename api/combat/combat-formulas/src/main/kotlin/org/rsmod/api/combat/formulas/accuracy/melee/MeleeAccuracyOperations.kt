@@ -10,6 +10,7 @@ import org.rsmod.api.combat.formulas.attributes.CombatMeleeAttributes
 import org.rsmod.api.combat.formulas.attributes.CombatNpcAttributes
 import org.rsmod.api.combat.formulas.scale
 import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.stat.attackLvl
 import org.rsmod.api.player.stat.defenceLvl
 import org.rsmod.api.player.worn.EquipmentChecks
@@ -178,7 +179,7 @@ public object MeleeAccuracyOperations {
             this[varbits.improved_reflexes] == 1 -> 1.1
             this[varbits.incredible_reflexes] == 1 -> 1.15
             this[varbits.chivalry] == 1 -> 1.15
-            this[varbits.piety] == 1 -> 1.20
+            this[varbits.piety] == 1 -> if (this[varps.zeal] == 1) 1.25 else 1.20
             else -> 1.0
         }
 
