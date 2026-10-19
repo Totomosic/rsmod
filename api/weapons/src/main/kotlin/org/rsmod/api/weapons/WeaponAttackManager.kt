@@ -11,6 +11,7 @@ import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.proj.ProjAnim
@@ -234,6 +235,16 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
             multiplier = multiplier,
             checkDamageRestrictions = checkDamageRestrictions,
         )
+
+    /** @see [PlayerAttackManager.recordDamageRoll] */
+    public fun recordDamageRoll(
+        source: ProtectedAccess,
+        target: PathingEntity,
+        damage: Int,
+        distribution: DamageRoll,
+    ) {
+        manager.recordDamageRoll(source.player, target, damage, distribution)
+    }
 
     /** @see [PlayerAttackManager.alwaysMaxHit] */
     public fun alwaysMaxHit(

@@ -22,6 +22,7 @@ public class HitBuilder(
     private val sourceMaxDamageThreshold: Int,
 ) {
     public var isThrall: Boolean = false
+    public var damageRoll: DamageRoll? = null
 
     public fun isRighthandObj(type: ObjType): Boolean = type.id == righthandType
 
@@ -36,6 +37,7 @@ public class HitBuilder(
             righthandObj = righthandType,
             secondaryObj = secondaryType,
             isThrall = isThrall,
+            damageRoll = damageRoll,
         )
     }
 

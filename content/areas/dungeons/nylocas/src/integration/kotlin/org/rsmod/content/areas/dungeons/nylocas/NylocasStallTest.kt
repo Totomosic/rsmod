@@ -2,14 +2,17 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import com.google.inject.AbstractModule
 import jakarta.inject.Inject
+import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.rsmod.api.config.refs.components
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.scope.GameTestScope
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.npc.NpcMode
@@ -26,6 +29,7 @@ class NylocasStallTest {
         val npcRepo: NpcRepository,
         val npcTypes: NpcTypeList,
         val raid: TheatreRaid,
+        val events: EventBus,
     )
 
     @ParameterizedTest
@@ -86,6 +90,14 @@ class NylocasStallTest {
             NylocasEncounter::class,
             TheatreRaid::class,
         ) { deps ->
+            val checks = mutableListOf<List<Int>>()
+            deps.events.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
+                checks +=
+                    client
+                        .filterIsInstance<MessageGame>()
+                        .filter { it.message.startsWith("LNC1 ") }
+                        .map { it.message.split(" ").drop(2).map(String::toInt) }
+            }
             val room = start(deps)
             val blockers = List(11) { addBlocker(deps, room) }
             advance(ticks = 8)
@@ -104,6 +116,17 @@ class NylocasStallTest {
             advance()
             assertEquals(3, player.vars[tob_varbits.progress_value])
             assertEquals(8, deps.npcs.count())
+            // Sequence, room tick, incoming wave, retry number, pre-spawn occupancy, cap.
+            assertEquals(
+                listOf(
+                    listOf(1, 4, 1, 0, 0, 12),
+                    listOf(2, 8, 2, 0, 12, 12),
+                    listOf(3, 12, 2, 1, 12, 12),
+                    listOf(4, 16, 2, 2, 11, 12),
+                    listOf(5, 28, 3, 0, 7, 12),
+                ),
+                checks,
+            )
         }
 
     @Test

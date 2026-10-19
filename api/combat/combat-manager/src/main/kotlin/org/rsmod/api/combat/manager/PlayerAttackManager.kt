@@ -4,6 +4,7 @@ import jakarta.inject.Inject
 import kotlin.math.min
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.PlayerAttackCheck
+import org.rsmod.api.combat.commons.PlayerDamageRoll
 import org.rsmod.api.combat.commons.PlayerMaxHitCheck
 import org.rsmod.api.combat.commons.fx.MeleeAnimationAndSound
 import org.rsmod.api.combat.commons.isCombatDummy
@@ -50,6 +51,7 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.interact.InteractionOp
@@ -1976,9 +1978,24 @@ constructor(
         return check.forced
     }
 
-    public fun rollDamage(source: Player, target: PathingEntity, style: HitType, maxHit: Int): Int =
-        if (alwaysMaxHit(source, target, style)) maxHit.coerceAtLeast(1)
-        else random.rollDamage(maxHit, target)
+    /** Records an already rolled attack without consuming or changing its random stream. */
+    public fun recordDamageRoll(
+        source: Player,
+        target: PathingEntity,
+        damage: Int,
+        distribution: DamageRoll,
+    ) {
+        eventBus.publish(PlayerDamageRoll(source, target, damage, distribution))
+    }
+
+    public fun rollDamage(source: Player, target: PathingEntity, style: HitType, maxHit: Int): Int {
+        val forced = alwaysMaxHit(source, target, style)
+        val damage = if (forced) maxHit.coerceAtLeast(1) else random.rollDamage(maxHit, target)
+        val distribution =
+            if (forced) DamageRoll(damage..damage) else DamageRoll(0..maxHit, raiseZero = true)
+        recordDamageRoll(source, target, damage, distribution)
+        return damage
+    }
 
     public fun rollDamage(
         source: Player,
@@ -1986,9 +2003,13 @@ constructor(
         style: HitType,
         range: IntRange,
         attackRate: Int? = null,
-    ): Int =
-        if (alwaysMaxHit(source, target, style, attackRate)) range.last
-        else random.rollDamage(range, target)
+    ): Int {
+        val forced = alwaysMaxHit(source, target, style, attackRate)
+        val damage = if (forced) range.last else random.rollDamage(range, target)
+        val distribution = if (forced) DamageRoll(damage..damage) else DamageRoll(range)
+        recordDamageRoll(source, target, damage, distribution)
+        return damage
+    }
 
     public fun spawnProjectile(
         source: Player,

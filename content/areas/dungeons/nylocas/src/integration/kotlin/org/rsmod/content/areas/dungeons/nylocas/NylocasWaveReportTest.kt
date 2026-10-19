@@ -6,21 +6,32 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.config.refs.components
+import org.rsmod.api.config.refs.varps
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.npc.hit.modifier.NpcHitModifier
+import org.rsmod.api.npc.hit.modifier.StandardNpcHitModifier
 import org.rsmod.api.npc.hit.queueHit
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.NpcList
+import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.hit.HitType
 import org.rsmod.map.CoordGrid
 
 class NylocasWaveReportTest {
     class Dependencies
     @Inject
-    constructor(val raid: TheatreRaid, val npcs: NpcList, val events: EventBus)
+    constructor(
+        val raid: TheatreRaid,
+        val npcs: NpcList,
+        val events: EventBus,
+        val attacks: PlayerAttackManager,
+        val modifier: StandardNpcHitModifier,
+    )
 
     @Test
     fun GameTestState
@@ -39,7 +50,7 @@ class NylocasWaveReportTest {
                 received +=
                     client
                         .filterIsInstance<MessageGame>()
-                        .filter { it.message.startsWith("LNW1 ") }
+                        .filter { it.message.startsWith("LNW2 ") }
                         .map { it.message.split(" ") }
             }
             fun reports() = received
@@ -93,6 +104,45 @@ class NylocasWaveReportTest {
         }
 
     @Test
+    fun GameTestState
+        .`queued rolls retain their launch gear distribution through impact and clipping`() =
+        runInjectedGameTest(
+            Dependencies::class,
+            null,
+            NylocasEncounter::class,
+            TheatreRaid::class,
+            NpcHitScript::class,
+            NylocasDeaths::class,
+        ) { deps ->
+            val barrier = placeMapLoc(CoordGrid(3295, 4255), nylocas_locs.barrier)
+            val reports = mutableListOf<List<String>>()
+            deps.events.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
+                reports +=
+                    client
+                        .filterIsInstance<MessageGame>()
+                        .filter { it.message.startsWith("LNW2 ") }
+                        .map { it.message.split(" ") }
+            }
+            val room = createRegion(NylocasRoom.template)
+            player.telejump(room.normal[CoordGrid(3295, 4256)])
+            advance()
+            deps.raid.start(player, TheatreRaidOptions(startingWave = 31))
+            player.opLoc1(barrier.copy(coords = room.normal[barrier.coords]))
+            advance()
+            player.resumePauseButton(components.chatmenu_pbutton, sub = 1)
+            advanceUntil(predicate = { player.vars[tob_varbits.progress_value] == 31 })
+            val target = deps.npcs.first { it.id in 8342..8353 }
+            val rolled = deps.attacks.rollDamage(player, target, HitType.Melee, 15)
+            target.queueHit(player, 2, HitType.Melee, rolled, deps.modifier)
+            VarPlayerIntMapSetter.set(player, varps.com_maxhit, 100)
+            advance(ticks = 3)
+            assertEquals("1", reports.last()[33]) // Post-cap small attempts.
+            assertEquals("500000", reports.last()[35]) // Eight lethal rolls out of sixteen.
+            assertEquals(if (rolled >= 8) "1" else "0", reports.last()[34])
+            assertEquals("0", reports.last()[39]) // Distribution was measured, not excluded.
+        }
+
+    @Test
     fun `kills ignore misses count individual damage splats and retain lethal style and thrall credit`() {
         val stats = NylocasWaveStats()
         val small = NylocasWaveStats.Damage(NylocasSize.Small)
@@ -107,7 +157,7 @@ class NylocasWaveReportTest {
         stats.impact(big, NylocasStyle.Magic, 0, 0, true, 5)
         assertEquals(
             "waves 0 2 0 0 1 1 1 1 0 1 0 1 1 0 0 0 0 0 0 0 0 0 0 0",
-            stats.payload(2, "waves"),
+            stats.payload(2, "waves").split(" ").take(25).joinToString(" "),
         )
     }
 
@@ -152,6 +202,64 @@ class NylocasWaveReportTest {
         assertEquals(1, fields(stats)[3])
     }
 
+    @Test
+    fun `luck uses first damaging roll and separates phase size and unsupported hits`() {
+        val stats = NylocasWaveStats()
+        stats.wave = 20
+        val small = NylocasWaveStats.Damage(NylocasSize.Small)
+        val big = NylocasWaveStats.Damage(NylocasSize.Big)
+        stats.impact(small, NylocasStyle.Melee, 0, 8, false, 1, DamageRoll(0..15, true))
+        stats.impact(small, NylocasStyle.Melee, 4, 4, false, 2, DamageRoll(0..15, true))
+        // A later hit with different gear must not change this Nylo's expectation.
+        stats.impact(small, NylocasStyle.Melee, 4, 0, false, 3, DamageRoll(100..100))
+        stats.impact(big, NylocasStyle.Melee, 16, 0, false, 3, DamageRoll(16..16))
+        stats.wave = 21
+        stats.impact(
+            NylocasWaveStats.Damage(NylocasSize.Small),
+            NylocasStyle.Magic,
+            8,
+            0,
+            false,
+            4,
+            DamageRoll(0..15),
+        )
+        stats.wave = 31
+        stats.impact(
+            NylocasWaveStats.Damage(NylocasSize.Big),
+            NylocasStyle.Melee,
+            8,
+            8,
+            false,
+            5,
+            DamageRoll(0..15, true),
+        )
+        stats.impact(
+            NylocasWaveStats.Damage(NylocasSize.Small),
+            NylocasStyle.Melee,
+            8,
+            0,
+            true,
+            5,
+            DamageRoll(0..15, true),
+        )
+        stats.impact(NylocasWaveStats.Damage(NylocasSize.Small), NylocasStyle.Melee, 8, 0, false, 5)
+        assertEquals(
+            listOf(1L, 0L, 500000L, 1L, 1L, 1000000L, 1L, 1L, 533333L, 1L, 0L, 0L, 2L),
+            stats.payload(0, "cleanup").split(" ").drop(25).map(String::toLong),
+        )
+    }
+
+    @Test
+    fun `damage roll probabilities preserve zero floors minimum hits and guaranteed hits`() {
+        assertEquals(0.5, DamageRoll(0..15, true).chanceAtLeast(8))
+        assertEquals(8.0 / 15, DamageRoll(0..15).chanceAtLeast(8))
+        assertEquals(1.0, DamageRoll(8..15).chanceAtLeast(8))
+        assertEquals(0.0, DamageRoll(0..7, true).chanceAtLeast(8))
+        assertEquals(1.0, DamageRoll(8..8).chanceAtLeast(8))
+        assertEquals(0.0, DamageRoll(0..0).chanceAtLeast(8))
+        assertEquals(1.0, DamageRoll(0..0, true).chanceAtLeast(1))
+    }
+
     private fun overkilled(stats: NylocasWaveStats, size: NylocasSize): NylocasWaveStats.Damage =
         NylocasWaveStats.Damage(size).also {
             stats.impact(it, NylocasStyle.Melee, 8, 0, false, 1)
@@ -159,5 +267,5 @@ class NylocasWaveReportTest {
         }
 
     private fun fields(stats: NylocasWaveStats): List<Int> =
-        stats.payload(0, "waves").split(" ").drop(1).map(String::toInt)
+        stats.payload(0, "waves").split(" ").drop(1).take(24).map(String::toInt)
 }

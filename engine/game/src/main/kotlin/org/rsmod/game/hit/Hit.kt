@@ -18,6 +18,7 @@ public data class Hit(
     private val secondaryObj: Int?,
     /** Keeps thrall attribution while the source remains its owner for kill credit. */
     public val isThrall: Boolean = false,
+    public val damageRoll: DamageRoll? = null,
 ) {
     public val damage: Int
         get() = hitmark.damage

@@ -3,12 +3,14 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.util.UUID
+import org.rsmod.api.combat.commons.PlayerDamageRoll
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.script.onEvent
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.npc.NpcStateEvents
+import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.region.Region
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -24,7 +26,21 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
         with(context) {
             onEvent<NylocasRoomStart> {
                 bodies.entries.removeAll { it.value.region.uid == region.uid }
-                rooms[region.uid] = Room(region)
+                rooms[region.uid] = Room(region, clock.cycle)
+            }
+            onEvent<PlayerDamageRoll> {
+                val body = bodies[target] ?: return@onEvent
+                if (damage > 0) body.rolls += Rolled(source.uid.packed, damage, distribution)
+            }
+            for (type in 8342..8353) {
+                onEvent<NpcHitEvents.Modify>(type) {
+                    val body = bodies[npc] ?: return@onEvent
+                    val index =
+                        body.rolls.indexOfFirst {
+                            it.source == hit.sourceUid && it.damage == hit.damage
+                        }
+                    if (index >= 0) hit.damageRoll = body.rolls.removeAt(index).distribution
+                }
             }
             onEvent<NpcStateEvents.Delete> {
                 val body = bodies.remove(npc) ?: return@onEvent
@@ -45,9 +61,11 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                     npc.hitpoints,
                     hit.isThrall,
                     clock.cycle,
+                    hit.damageRoll,
                 )
             }
             onEvent<GameLifecycle.EndCycle> {
+                bodies.values.forEach { it.rolls.clear() }
                 rooms.values.removeAll { it.region.slot == Region.INVALID_SLOT }
                 bodies.entries.removeAll { it.value.region.slot == Region.INVALID_SLOT }
                 for (room in rooms.values) {
@@ -61,7 +79,7 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                         }
                     val payload = room.stats.payload(population, status)
                     if (payload != room.lastPayload) {
-                        raid.sendWaveReport(room.region, "LNW1 ${room.id} $payload")
+                        raid.sendWaveReport(room.region, "LNW2 ${room.id} $payload")
                         room.lastPayload = payload
                     }
                 }
@@ -78,13 +96,28 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
         rooms[region.uid]?.stats?.wave = wave
     }
 
-    fun admission(region: Region, population: Int, cap: Int) {
-        rooms[region.uid]?.stats?.admission(population, cap, clock.cycle)
+    fun admission(region: Region, wave: Int, population: Int, cap: Int) {
+        val room = rooms[region.uid] ?: return
+        room.stats.admission(population, cap, clock.cycle)
+        if (room.checkWave == wave) room.attempt++ else room.attempt = 0
+        room.checkWave = wave
+        val tick = clock.cycle - room.startCycle
+        raid.sendWaveReport(
+            region,
+            "LNC1 ${room.id} ${++room.sequence} $tick $wave ${room.attempt} $population $cap",
+        )
     }
 
-    private class Body(val region: Region, val damage: NylocasWaveStats.Damage)
+    private class Rolled(val source: Int, val damage: Int, val distribution: DamageRoll)
 
-    private class Room(val region: Region) {
+    private class Body(val region: Region, val damage: NylocasWaveStats.Damage) {
+        val rolls = mutableListOf<Rolled>()
+    }
+
+    private class Room(val region: Region, val startCycle: Int) {
+        var checkWave = 0
+        var attempt = 0
+        var sequence = 0
         val id = UUID.randomUUID().toString()
         val stats = NylocasWaveStats()
         var lastPayload: String? = null
@@ -102,6 +135,9 @@ class NylocasWaveStats {
     private val styleKills = IntArray(3)
     private val overkills = IntArray(3)
     private val splits = Array(3) { IntArray(3) }
+    // Pre/post cap, then small/big. Cleanup belongs to post-cap.
+    private val luck = Array(4) { Luck() }
+    private var unmeasured = 0
     private var removalCycle = -1
     private var populationWithoutOverkillDelta = 0
 
@@ -112,6 +148,7 @@ class NylocasWaveStats {
         hp: Int,
         thrall: Boolean,
         cycle: Int,
+        distribution: DamageRoll? = null,
     ) {
         if (body.killCycle != null) {
             // Only an extra splat on the lethal tick advances the death queue by one tick.
@@ -122,6 +159,16 @@ class NylocasWaveStats {
             return
         }
         if (damage <= 0) return
+        if (body.positiveHits == 0) {
+            if (distribution != null && !thrall) {
+                val group = luck[(if (wave >= 21) 2 else 0) + body.size.ordinal]
+                group.attempts++
+                group.expected += distribution.chanceAtLeast(hp + damage)
+                if (hp == 0) group.actual++
+            } else {
+                unmeasured++
+            }
+        }
         body.positiveHits++
         if (hp != 0) return
         body.killCycle = cycle
@@ -159,8 +206,22 @@ class NylocasWaveStats {
                 kills.indices.flatMap { listOf(kills[it], oneShots[it]) } +
                 styleKills.toList() +
                 overkills.toList() +
-                splits.flatMap { it.toList() })
+                splits.flatMap { it.toList() } +
+                luck.flatMap {
+                    listOf(
+                        it.attempts,
+                        it.actual,
+                        kotlin.math.round(it.expected * 1000000).toLong(),
+                    )
+                } +
+                unmeasured)
             .joinToString(" ")
+
+    private class Luck {
+        var attempts = 0
+        var actual = 0
+        var expected = 0.0
+    }
 
     class Damage(val size: NylocasSize) {
         var positiveHits = 0

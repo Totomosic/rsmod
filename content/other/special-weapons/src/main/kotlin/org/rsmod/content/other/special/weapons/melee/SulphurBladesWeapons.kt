@@ -13,6 +13,7 @@ import org.rsmod.content.other.special.weapons.configs.special_weapon_objs
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
+import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.hit.HitType
 
 class SulphurBladesWeapons @Inject constructor(private val random: GameRandom) : WeaponMap {
@@ -78,8 +79,12 @@ class SulphurBladesWeapons @Inject constructor(private val random: GameRandom) :
                     multiplier = 1.0,
                 )
             if (!accurate || maxHit <= 0) return 0
-            return if (manager.alwaysMaxHit(this, target, HitType.Melee)) maxHit
-            else damageRandom.rollDamage(maxHit, target)
+            val forced = manager.alwaysMaxHit(this, target, HitType.Melee)
+            val damage = if (forced) maxHit else damageRandom.rollDamage(maxHit, target)
+            val distribution =
+                if (forced) DamageRoll(maxHit..maxHit) else DamageRoll(0..maxHit, true)
+            manager.recordDamageRoll(this, target, damage, distribution)
+            return damage
         }
     }
 }

@@ -153,7 +153,7 @@ constructor(
                 npcs.count { npc ->
                     npc.id in 8342..8353 && regions[npc.coords]?.uid == encounter.region.uid
                 }
-            report.admission(encounter.region, population, cap)
+            report.admission(encounter.region, encounter.waveIndex + 1, population, cap)
             if (population >= cap) {
                 encounter.waveCycle = clock + 4
                 continue
