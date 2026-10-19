@@ -16,6 +16,7 @@ import org.rsmod.api.script.onIfOverlaySubOp
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.HeldOp
+import org.rsmod.game.inv.isType
 import org.rsmod.game.type.interf.IfButtonOp
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
@@ -34,6 +35,13 @@ private constructor(
     }
 
     private fun IfOverlayButton.opHeldButton() {
+        val clickedObj = obj
+        // A preceding click may have swapped a different item into this slot before the
+        // client receives the inventory update. Never apply the old click to that item.
+        if (clickedObj == null || !player.inv[comsub].isType(clickedObj)) {
+            resendSlot(player.inv, 0)
+            return
+        }
         if (op == IfButtonOp.Op10) {
             interactions.examine(player, player.inv, comsub)
             return
