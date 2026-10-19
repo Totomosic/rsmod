@@ -224,6 +224,7 @@ constructor(
             // Attribute damage and kill credit to the owner without XP, accuracy, or retaliation.
             val damage = if (check.allowed) random.of(0..3) else 0
             val modifier = NpcHitModifier { target ->
+                isThrall = true
                 with(hitModifier) { modify(target) }
                 if (!check.allowed) this.damage = 0
             }

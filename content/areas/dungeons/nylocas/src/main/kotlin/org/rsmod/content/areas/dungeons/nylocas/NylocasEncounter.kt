@@ -36,6 +36,7 @@ constructor(
     private val behaviour: NylocasBehaviour,
     private val boss: NylocasBoss,
     private val eventBus: EventBus,
+    private val report: NylocasWaveReport,
 ) : PluginScript() {
     private val encounters = mutableMapOf<Int, Encounter>()
     private val pendingEntries = mutableMapOf<Player, PendingEntry>()
@@ -58,6 +59,7 @@ constructor(
         onEvent<GameLifecycle.EndCycle> { checkCleanup() }
         behaviour.register(this)
         boss.register(this)
+        report.register(this)
     }
 
     private suspend fun ProtectedAccess.pass(barrier: BoundLocInfo) {
@@ -151,6 +153,7 @@ constructor(
                 npcs.count { npc ->
                     npc.id in 8342..8353 && regions[npc.coords]?.uid == encounter.region.uid
                 }
+            report.admission(encounter.region, population, cap)
             if (population >= cap) {
                 encounter.waveCycle = clock + 4
                 continue
@@ -162,6 +165,7 @@ constructor(
             }
             encounter.waveIndex++
             raid.waveSpawned(encounter.region, encounter.waveIndex)
+            report.waveSpawned(encounter.region, encounter.waveIndex)
             waves.waves.getOrNull(encounter.waveIndex)?.let {
                 encounter.waveCycle = clock + it.ticksAfterPrevious
             }

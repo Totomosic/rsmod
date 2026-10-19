@@ -71,6 +71,7 @@ constructor(
     private val clock: MapClock,
     private val npcRepo: NpcRepository,
     private val world: WorldRepository,
+    private val report: NylocasWaveReport,
 ) {
     private val active = mutableMapOf<Npc, State>()
 
@@ -162,6 +163,7 @@ constructor(
     }
 
     fun add(npc: Npc, region: Region, slot: NylocasSlot, spawn: NylocasSpawn, teamSize: Int) {
+        report.spawned(npc, region, spawn.size)
         npc.collisionSize = 1
         val pillar = spawn.pillar?.let { NpcAvatar(2).apply { coords = region.normal[it.source] } }
         val tiles = spawn.pillar?.let { pillarTiles(region, it, npc.size) }.orEmpty()
@@ -256,6 +258,7 @@ constructor(
             npc.moveRestrict = if (entered) MoveRestrict.PassThru else MoveRestrict.BlockedNormal
             npcRepo.add(npc, Int.MAX_VALUE)
             npc.respawns = false
+            report.spawned(npc, state.region, NylocasSize.Small, style)
             active[npc] =
                 State(
                     state.region,

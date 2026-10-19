@@ -94,6 +94,7 @@ constructor(private val playerList: PlayerList, private val eventBus: EventBus) 
         InternalNpcHeadbars.createFromHitmark(hitmark, currHp, maxHp, headbar)
 
     private fun Npc.publishHitEvent(hit: Hit) {
+        eventBus.publish(NpcHitEvents.Applied(this, hit))
         val event = NpcHitEvents.Impact(this, hit)
         eventBus.publish(event)
     }

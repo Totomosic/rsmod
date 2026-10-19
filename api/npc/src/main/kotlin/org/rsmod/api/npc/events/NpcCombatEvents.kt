@@ -8,6 +8,9 @@ import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitBuilder
 
 public class NpcHitEvents {
+    /** Observational event after HP changes, including zero hits on a corpse. */
+    public data class Applied(public val npc: Npc, public val hit: Hit) : UnboundEvent
+
     /** Published once when a hit kills an NPC, before its death animation or drops. */
     public data class Kill(public val npc: Npc, public val killer: Player) : UnboundEvent
 

@@ -21,6 +21,8 @@ public class HitBuilder(
     private val targetMaxDamageThreshold: Int,
     private val sourceMaxDamageThreshold: Int,
 ) {
+    public var isThrall: Boolean = false
+
     public fun isRighthandObj(type: ObjType): Boolean = type.id == righthandType
 
     public fun isSecondaryObj(type: ObjType): Boolean = type.id == secondaryType
@@ -33,6 +35,7 @@ public class HitBuilder(
             sourceUid = sourceUid,
             righthandObj = righthandType,
             secondaryObj = secondaryType,
+            isThrall = isThrall,
         )
     }
 

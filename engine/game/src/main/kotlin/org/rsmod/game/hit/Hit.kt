@@ -16,6 +16,8 @@ public data class Hit(
     private val sourceUid: Int?,
     private val righthandObj: Int?,
     private val secondaryObj: Int?,
+    /** Keeps thrall attribution while the source remains its owner for kill credit. */
+    public val isThrall: Boolean = false,
 ) {
     public val damage: Int
         get() = hitmark.damage

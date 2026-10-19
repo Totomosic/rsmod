@@ -7,6 +7,7 @@ import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.player.output.ChatType
 import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
@@ -166,6 +167,13 @@ constructor(
         raid.progressType = 2
         raid.progressValue = wave
         sync(raid)
+    }
+
+    fun sendWaveReport(region: Region, payload: String) {
+        val raid = raids[region.uid] ?: return
+        for (member in raid.members) {
+            if (regions[member.coords]?.uid == region.uid) member.mes(payload, ChatType.Console)
+        }
     }
 
     fun bossHealth(region: Region, hitpoints: Int, maximum: Int) {

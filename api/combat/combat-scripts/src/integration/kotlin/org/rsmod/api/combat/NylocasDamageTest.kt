@@ -6,6 +6,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import net.rsprot.protocol.game.outgoing.sound.SynthSound
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -226,6 +227,7 @@ class NylocasDamageTest {
             var mageRemovalCycle = -1
             var nextWaveCycle = -1
             var removedBeforeNextWave: Boolean? = null
+            var latestReport: List<String>? = null
             eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
                 attacks += deps.clock.cycle - spawnCycle to target
             }
@@ -234,6 +236,12 @@ class NylocasDamageTest {
                     assertEquals(moving, npc.hasMovedPreviousCycle)
                     impacts += deps.clock.cycle - spawnCycle to hit.damage
                 }
+            }
+            eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
+                client
+                    .filterIsInstance<MessageGame>()
+                    .lastOrNull { it.message.startsWith("LNW1 ") }
+                    ?.let { latestReport = it.message.split(" ") }
             }
             eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
                 val age = deps.clock.cycle - 1 - spawnCycle
@@ -279,6 +287,7 @@ class NylocasDamageTest {
             assertEquals(8, mageRemovalCycle)
             assertEquals(if (overkill) 8 else 12, nextWaveCycle)
             assertEquals(true, removedBeforeNextWave)
+            assertEquals(if (overkill) "1" else "0", checkNotNull(latestReport)[6])
         }
 
     @Test
@@ -486,6 +495,7 @@ class NylocasDamageTest {
                     advance(ticks = 6)
                     val impacts = hits.getValue(target)
                     assertTrue(impacts.isNotEmpty())
+                    assertTrue(impacts.all { it.isThrall })
                     if (style == thrallStyle) assertTrue(impacts.any { it.damage > 0 })
                     else {
                         assertTrue(impacts.all { it.damage == 0 })
