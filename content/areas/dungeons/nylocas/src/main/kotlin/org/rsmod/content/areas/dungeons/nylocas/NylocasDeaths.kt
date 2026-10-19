@@ -38,6 +38,7 @@ constructor(
             this,
             animation = nylocas_seqs.death(style),
             animationTicks = if (size == NylocasSize.Small) 1 else 5,
+            delayIfMoving = size == NylocasSize.Big,
         )
         // The small's explosion is detached scenery after its one-tick NPC stage.
         // Bigs retain their body for the full five-tick standard death sequence.

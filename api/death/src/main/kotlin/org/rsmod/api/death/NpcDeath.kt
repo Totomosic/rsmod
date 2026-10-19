@@ -43,8 +43,9 @@ constructor(
         access: StandardNpcAccess,
         animation: SeqType = access.param(params.death_anim),
         animationTicks: Int = seqTypes[animation].tickDuration,
+        delayIfMoving: Boolean = true,
     ) {
-        access.death(npcRepo, seqTypes, players, animation, animationTicks)
+        access.death(npcRepo, seqTypes, players, animation, animationTicks, delayIfMoving)
     }
 
     public suspend fun deathWithDrops(
@@ -112,12 +113,13 @@ public suspend fun StandardNpcAccess.death(
     players: PlayerList,
     animation: SeqType = param(params.death_anim),
     animationTicks: Int = seqTypes[animation].tickDuration,
+    delayIfMoving: Boolean = true,
 ) {
     require(animationTicks > 0) { "Death animation duration must be positive: $animationTicks" }
     walk(coords)
     noneMode()
     hideAllOps()
-    arriveDelay()
+    if (delayIfMoving) arriveDelay()
 
     val aggressivePlayer = npc.aggressivePlayer
     if (aggressivePlayer != null) {

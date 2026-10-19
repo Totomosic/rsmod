@@ -45,8 +45,8 @@ class NylocasDeathsTest {
     @CsvSource(
         "Small, false, false, 2",
         "Small, false, true, 1",
-        "Small, true, false, 3",
-        "Small, true, true, 2",
+        "Small, true, false, 2",
+        "Small, true, true, 1",
         "Big, false, false, 6",
         "Big, false, true, 5",
         "Big, true, false, 7",

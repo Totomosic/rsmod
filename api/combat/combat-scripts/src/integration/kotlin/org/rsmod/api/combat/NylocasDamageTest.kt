@@ -186,9 +186,10 @@ class NylocasDamageTest {
         }
 
     @ParameterizedTest
-    @CsvSource("false", "true")
+    @CsvSource("false, false", "false, true", "true, false", "true, true")
     fun `wave 21 spell then melee overkill waits for both bodies before wave 22`(
         overkill: Boolean,
+        moving: Boolean,
         state: GameTestState,
     ) =
         state.runDamageTest(NylocasDeaths::class, TheatreRaid::class, entryBarrier = true) {
@@ -214,10 +215,10 @@ class NylocasDamageTest {
                     baseHitpointsLvl = NylocasSize.Small.hitpoints(1)
                     hitpoints = baseHitpointsLvl
                 }
-            melee.telejump(room.normal[CoordGrid(3291, 4248)])
+            melee.telejump(room.normal[CoordGrid(3291, if (moving) 4247 else 4248)])
             player.telejump(room.normal[CoordGrid(3290, 4248)])
-            // Both bodies must leave to bring the population below 24. The spell's queue tick
-            // keeps the mage in the room through wave 22's first admission check at age 8.
+            // Both bodies must leave to bring the population below 24. The walking mage
+            // must die by wave 22's first admission check at age 8, just like a stationary small.
             repeat(18) { spawnNylo(deps, room, NylocasStyle.Melee).aiTimer(0) }
             val attacks = mutableListOf<Pair<Int, Npc>>()
             val impacts = mutableListOf<Pair<Int, Int>>()
@@ -229,7 +230,10 @@ class NylocasDamageTest {
                 attacks += deps.clock.cycle - spawnCycle to target
             }
             eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, melee.id.toLong()) {
-                if (npc === melee) impacts += deps.clock.cycle - spawnCycle to hit.damage
+                if (npc === melee) {
+                    assertEquals(moving, npc.hasMovedPreviousCycle)
+                    impacts += deps.clock.cycle - spawnCycle to hit.damage
+                }
             }
             eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
                 val age = deps.clock.cycle - 1 - spawnCycle
@@ -253,9 +257,12 @@ class NylocasDamageTest {
             advance(ticks = 5)
             assertTrue(deps.attacks.isAttackDelayed(player))
             player.clearInteractionRoute()
+            if (moving) melee.walk(room.normal[CoordGrid(3291, 4251)])
             player.withProtectedAccess {
                 delay(1)
                 assertFalse(deps.attacks.isAttackDelayed(player))
+                assertEquals(room.normal[CoordGrid(3291, 4248)], melee.coords)
+                assertEquals(moving, melee.hasMovedThisCycle)
                 assertEquals(1, player.distanceTo(melee))
                 player.righthand =
                     InvObj(
@@ -269,8 +276,8 @@ class NylocasDamageTest {
             assertTrue(attacks[1].second === melee)
             assertEquals(if (overkill) listOf(hp, 0) else listOf(hp), impacts.map { it.second })
             assertEquals(if (overkill) 8 else 9, removalCycle)
-            assertTrue(mageRemovalCycle in 9..11)
-            assertEquals(12, nextWaveCycle)
+            assertEquals(8, mageRemovalCycle)
+            assertEquals(if (overkill) 8 else 12, nextWaveCycle)
             assertEquals(true, removedBeforeNextWave)
         }
 
