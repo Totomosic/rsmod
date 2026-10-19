@@ -40,8 +40,8 @@ class TonalzticsOfRalosWeapons : WeaponMap {
             for ((index, spot) in
                 listOf(TonalzticsSpots.first, TonalzticsSpots.second).withIndex()) {
                 val projectile = manager.spawnProjectile(this, target, spot, TonalzticsProjs.travel)
-                // Ralos applies both hits on its one-tick projectile impact.
-                val hitDelay = projectile.serverCycles
+                // Both hits use the same fixed travel time and standard ranged hit delay.
+                val (hitDelay, clientDelay) = projectile.rangedDurations
                 // Both accuracy and damage are independent, including when the first hit misses.
                 val damage = manager.rollRangedDamage(this, target, attack, maxHitMultiplier = 0.75)
                 manager.giveCombatXp(this, target, attack, damage)
@@ -51,7 +51,7 @@ class TonalzticsOfRalosWeapons : WeaponMap {
                         target,
                         ammo = null,
                         damage = damage,
-                        clientDelay = projectile.clientCycles,
+                        clientDelay = clientDelay,
                         hitDelay = hitDelay,
                     )
                 } else {

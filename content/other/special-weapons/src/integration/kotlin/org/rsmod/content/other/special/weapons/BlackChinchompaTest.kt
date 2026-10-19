@@ -6,6 +6,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.sound.SynthSound
 import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
 import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
@@ -39,6 +40,7 @@ import org.rsmod.api.random.GameRandom
 import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.testing.GameTestState
+import org.rsmod.api.testing.capture.CaptureClient
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.api.weapons.WeaponAttackManager
@@ -55,7 +57,6 @@ import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.map.CoordGrid
-import org.rsmod.map.zone.ZoneGrid
 import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
@@ -102,7 +103,7 @@ class BlackChinchompaTest {
 
     @ParameterizedTest
     @CsvSource("1, 0", "1, 9999", "9, 0", "9, 9999", "10, 0", "10, 9999")
-    fun `each throw plays a release sound and one explosion when the projectile lands`(
+    fun `only the thrower hears the release and delayed explosion`(
         distance: Int,
         accuracyRoll: Int,
         state: GameTestState,
@@ -122,6 +123,8 @@ class BlackChinchompaTest {
                         }
                     }
                 player.placeAt(target.coords.translateZ(-distance))
+                val bystander = registerPlayer(player.coords)
+                val bystanderClient = bystander.client as CaptureClient
                 equip(count = 1)
                 random.next = accuracyRoll
                 repeat(if (playerTarget) 1 else 4) { random.then = 5 }
@@ -137,31 +140,15 @@ class BlackChinchompaTest {
                         .distinct()
                         .flatMap { deps.zoneUpdates[it]?.toList().orEmpty() }
                         .filterIsInstance<SoundArea>()
-                assertEquals(2, sounds.size)
-                // Player throws use throwingaxe (2706), not the creature's attack squeak (359).
-                assertTrue(sounds.none { it.id == 359 })
-                val launch = sounds.single { it.id == 2706 }
-                assertEquals(0, launch.delay)
-                assertEquals(1, launch.loops)
-                assertEquals(ZoneGrid.from(player.coords).x, launch.xInZone)
-                assertEquals(ZoneGrid.from(player.coords).z, launch.zInZone)
-                assertTrue(
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)]).any {
-                        it === launch
-                    }
+                assertTrue(sounds.isEmpty())
+                assertEquals(
+                    listOf(SynthSound(2706, 1, 0), SynthSound(360, 1, projectile.endTime)),
+                    client.filterIsInstance<SynthSound>(),
                 )
-                val explosion = sounds.single { it.id == 360 }
-                assertEquals(360, explosion.id)
-                assertEquals(projectile.endTime, explosion.delay)
-                assertTrue(explosion.delay > 0)
-                assertEquals(1, explosion.loops)
-                assertEquals(ZoneGrid.from(target.coords).x, explosion.xInZone)
-                assertEquals(ZoneGrid.from(target.coords).z, explosion.zInZone)
-                assertTrue(
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(target.coords)]).any {
-                        it === explosion
-                    }
-                )
+                assertTrue(bystanderClient.hasNone<SynthSound>())
+                if (target is Player) {
+                    assertTrue((target.client as CaptureClient).hasNone<SynthSound>())
+                }
                 val impactTick = 1 + projectile.endTime / 30
                 if (target is Npc) {
                     assertEquals(impactTick, target.pendingHits().single().second)

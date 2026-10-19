@@ -27,9 +27,10 @@ internal object TonalzticsProjBuilds : ProjAnimBuilder() {
             endHeight = 120
             delay = 0
             angle = 0
-            lengthAdjustment = 30
+            // Twisted bow at one tile: arrow delay (41) + length (5) + one step (5).
+            lengthAdjustment = 51
             progress = 11
-            // One game tick of travel and hit delay at every distance.
+            // Keep minimum-range bow timing at every distance.
             stepMultiplier = 0
         }
     }

@@ -58,10 +58,12 @@ class DragonClawsSpecialAttack : SpecialAttackMap {
             attack: CombatAttack.Melee,
         ) {
             anim(special_seqs.dragon_claws)
-            manager.soundArea(player, SpecialAttackSynths.clawsFirst, radius = 10)
-            manager.soundArea(player, SpecialAttackSynths.clawsSecond, delay = 15, radius = 10)
-            manager.soundArea(player, SpecialAttackSynths.clawsLast, delay = 30, radius = 10)
-            manager.soundArea(player, SpecialAttackSynths.clawsLast, delay = 45, radius = 10)
+            // Match the wiki recording's onsets: 0, 0.38, 0.64, and 1.00 seconds.
+            // https://oldschool.runescape.wiki/w/Dragon_claws#Special_attack
+            soundSynth(SpecialAttackSynths.clawsFirst)
+            soundSynth(SpecialAttackSynths.clawsSecond, delay = 19)
+            soundSynth(SpecialAttackSynths.clawsLast, delay = 32)
+            soundSynth(SpecialAttackSynths.clawsLast, delay = 50)
             spotanim(
                 spot = special_spots.dragon_claws,
                 slot = constants.spotanim_slot_combat,

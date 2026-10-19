@@ -66,7 +66,7 @@ constructor(
             // Materialize the search at launch: movement during flight cannot change the victims.
             val targets = splashTargets.find(this, primary)
             manager.playWeaponFx(this, attack)
-            manager.soundArea(player, BlackChinchompaSynths.launch, radius = 10)
+            soundSynth(BlackChinchompaSynths.launch)
             spotanim(
                 weaponType.paramOrNull(params.proj_launch),
                 height = 96,
@@ -74,12 +74,7 @@ constructor(
             )
             val projectile = manager.spawnProjectile(this, primary, travel, projectileType)
             val (serverDelay, clientDelay) = projectile.rangedDurations
-            manager.soundArea(
-                primary,
-                BlackChinchompaSynths.explode,
-                delay = clientDelay,
-                radius = 10,
-            )
+            soundSynth(BlackChinchompaSynths.explode, delay = clientDelay)
 
             val accurate =
                 manager.rollRangedAccuracy(

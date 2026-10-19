@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.sound.SynthSound
 import net.rsprot.protocol.game.outgoing.zone.payload.MapProjAnimV2
 import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
@@ -41,6 +42,7 @@ import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackModule as ApiSpecialAttackModule
 import org.rsmod.api.specials.SpecialAttackRegistry
 import org.rsmod.api.testing.GameTestState
+import org.rsmod.api.testing.capture.CaptureClient
 import org.rsmod.api.testing.factory.npcTypeFactory
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.content.other.special.attacks.configs.special_objs
@@ -126,25 +128,46 @@ class CombatSpecialAttacksTest {
         }
 
     @ParameterizedTest
-    @CsvSource("false, false", "false, true", "true, false", "true, true")
-    fun `claw special plays sounds one two three three for both variants and target types`(
+    @CsvSource(
+        "false, false, 0",
+        "false, true, 0",
+        "true, false, 0",
+        "true, true, 0",
+        "false, false, 9999",
+        "false, true, 9999",
+        "true, false, 9999",
+        "true, true, 9999",
+    )
+    fun `only the attacker hears claw sounds with the wiki recording timing`(
         ornament: Boolean,
         playerTarget: Boolean,
+        accuracyRoll: Int,
         state: GameTestState,
     ) =
         state.runSpecialsTest { deps ->
             val npc = spawnDummy()
             val target = if (playerTarget) registerPlayer(npc.coords) else npc
+            val bystander = registerPlayer(player.coords)
             val weapon = if (ornament) special_objs.dragon_claws_cr else special_objs.dragon_claws
-            random.next = HIT_ROLL
+            repeat(if (accuracyRoll == MISS_ROLL) 4 else 1) { random.then = accuracyRoll }
             useMeleeSpecial(deps, weapon, target, MeleeAttackType.Slash)
-            val sounds =
+            val areaSounds =
                 deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+            assertTrue(areaSounds.isEmpty())
+            // The reference onsets are approximately 0, 0.38, 0.64, and 1.00 seconds.
             assertEquals(
-                listOf(4138 to 0, 4140 to 15, 4141 to 30, 4141 to 45),
-                sounds.map { it.id to it.delay },
+                listOf(
+                    SynthSound(4138, 1, 0),
+                    SynthSound(4140, 1, 19),
+                    SynthSound(4141, 1, 32),
+                    SynthSound(4141, 1, 50),
+                ),
+                client.filterIsInstance<SynthSound>(),
             )
-            assertTrue(sounds.all { it.loops == 1 && it.range == 10 })
+            assertTrue((bystander.client as CaptureClient).hasNone<SynthSound>())
+            if (target is Player) {
+                assertTrue((target.client as CaptureClient).hasNone<SynthSound>())
+            }
         }
 
     @Test

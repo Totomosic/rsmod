@@ -22,6 +22,7 @@ import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
 import org.rsmod.api.config.refs.objs
+import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.hit.plugin.NpcHitScript
@@ -46,6 +47,9 @@ import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.proj.ProjAnim
+import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.proj.ProjAnimTypeList
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
@@ -53,7 +57,7 @@ import org.rsmod.plugin.scripts.PluginScript
 class TonalzticsOfRalosTest {
     @ParameterizedTest
     @CsvSource("1, false", "3, false", "5, false", "9, false", "1, true", "9, true")
-    fun `both hits land together one tick after firing regardless of distance`(
+    fun `both hits match minimum range twisted bow timing at every distance`(
         distance: Int,
         playerTarget: Boolean,
         state: GameTestState,
@@ -81,11 +85,22 @@ class TonalzticsOfRalosTest {
                 checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
                     .filterIsInstance<MapProjAnimV2>()
             assertEquals(listOf(2729, 2730), projectiles.map { it.id })
-            assertTrue(projectiles.all { it.endTime == 30 })
+            val bowTravel = deps.objTypes[objs.twisted_bow].param(params.proj_type)
+            val bowEndTime = ProjAnim.calculateEndTime(deps.projTypes[bowTravel], distance = 1)
+            assertEquals(51, bowEndTime)
+            assertTrue(projectiles.all { it.endTime == bowEndTime })
             assertEquals(10923, player.pendingSequence.id)
             assertEquals(weapon, player.righthand)
             assertEquals(10, player.quiver?.count)
-            if (target is Npc) assertEquals(listOf(5 to 1, 7 to 1), target.pendingHits())
+            if (target is Npc) assertEquals(listOf(5 to 2, 7 to 2), target.pendingHits())
+            advance()
+            assertEquals(
+                startingHp,
+                when (target) {
+                    is Npc -> target.hitpoints
+                    is Player -> target.hitpoints
+                },
+            )
             advance()
             assertEquals(
                 startingHp - 12,
@@ -111,7 +126,7 @@ class TonalzticsOfRalosTest {
             shoot(deps, npc)
             val first = if (firstHits) 5 else 0
             val second = if (secondHits) 7 else 0
-            assertEquals(listOf(first to 1, second to 1), npc.pendingHits())
+            assertEquals(listOf(first to 2, second to 2), npc.pendingHits())
             assertEquals(beforeXp + (first + second) * 4, player.statMap.getXP(stats.ranged))
         }
 
@@ -138,7 +153,7 @@ class TonalzticsOfRalosTest {
                 forced = true
             }
             shoot(deps, npc)
-            assertEquals(List(2) { normalMax * 3 / 4 to 1 }, npc.pendingHits())
+            assertEquals(List(2) { normalMax * 3 / 4 to 2 }, npc.pendingHits())
         }
 
     @Test
@@ -171,7 +186,7 @@ class TonalzticsOfRalosTest {
                 forced = true
             }
             shoot(deps, npc)
-            assertEquals(List(2) { normalMax * 3 / 4 to 1 }, npc.pendingHits())
+            assertEquals(List(2) { normalMax * 3 / 4 to 2 }, npc.pendingHits())
             assertEquals(100, player.quiver?.count)
         }
 
@@ -186,7 +201,7 @@ class TonalzticsOfRalosTest {
         }
         shoot(deps, npc)
         assertEquals(listOf(HitType.Ranged, HitType.Ranged), styles)
-        assertEquals(listOf(0 to 1, 0 to 1), npc.pendingHits())
+        assertEquals(listOf(0 to 2, 0 to 2), npc.pendingHits())
     }
 
     @ParameterizedTest
@@ -209,15 +224,17 @@ class TonalzticsOfRalosTest {
             rollHits(true, true)
             player.opNpc2(npc)
             advance()
-            assertEquals(listOf(5 to 1, 7 to 1), npc.pendingHits())
+            assertEquals(listOf(5 to 2, 7 to 2), npc.pendingHits())
             assertEquals(interval, player.actionDelay - attacks.single())
+            advance()
+            assertEquals(startingHp, npc.hitpoints)
             advance()
             assertEquals(startingHp - 12, npc.hitpoints)
             rollHits(true, true)
-            advance(ticks = interval - 1)
+            advance(ticks = interval - 2)
             assertEquals(2, attacks.size)
             assertEquals(interval, attacks[1] - attacks[0])
-            assertEquals(listOf(5 to 1, 7 to 1), npc.pendingHits())
+            assertEquals(listOf(5 to 2, 7 to 2), npc.pendingHits())
             assertEquals(special_weapon_objs.tonalztics_of_ralos_charged.id, player.righthand?.id)
             assertEquals(1, player.righthand?.count)
         }
@@ -271,6 +288,8 @@ class TonalzticsOfRalosTest {
         val registry: WeaponRegistry,
         val attacks: PlayerAttackManager,
         val zoneUpdates: ZoneUpdateMap,
+        val objTypes: ObjTypeList,
+        val projTypes: ProjAnimTypeList,
     )
 
     private fun GameTestState.runWeaponTest(
