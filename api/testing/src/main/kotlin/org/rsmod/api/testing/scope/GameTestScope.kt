@@ -142,6 +142,7 @@ import org.rsmod.game.map.LocZoneStorage
 import org.rsmod.game.map.collision.addLoc
 import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.queue.EngineQueueCache
+import org.rsmod.game.queue.WorldQueueList
 import org.rsmod.game.region.Region
 import org.rsmod.game.region.RegionListLarge
 import org.rsmod.game.region.RegionListSmall
@@ -1007,6 +1008,7 @@ constructor(
             bind(EventBus::class.java).`in`(Scopes.SINGLETON)
             bind(GameUpdate::class.java).`in`(Scopes.SINGLETON)
             bind(MapClock::class.java).`in`(Scopes.SINGLETON)
+            bind(WorldQueueList::class.java).`in`(Scopes.SINGLETON)
             bind(LocZoneStorage::class.java).`in`(Scopes.SINGLETON)
 
             bind(BoundValidator::class.java).`in`(Scopes.SINGLETON)

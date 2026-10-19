@@ -14,6 +14,7 @@ import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.repo.world.WorldRepository
 import org.rsmod.api.script.onApPlayerT
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.type.refs.comp.ComponentReferences
@@ -21,13 +22,19 @@ import org.rsmod.api.type.refs.seq.SeqReferences
 import org.rsmod.api.type.refs.spot.SpotanimReferences
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.HitType
+import org.rsmod.game.queue.WorldQueueList
+import org.rsmod.game.type.synth.SynthType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class EnergyTransfer
 @Inject
-constructor(private val spells: MagicSpellRegistry, private val runes: MagicRuneManager) :
-    PluginScript() {
+constructor(
+    private val spells: MagicSpellRegistry,
+    private val runes: MagicRuneManager,
+    private val world: WorldRepository,
+    private val worldQueues: WorldQueueList,
+) : PluginScript() {
     override fun ScriptContext.startup() {
         // The targeted-spell packet interrupts the caster's pending action. Casting itself
         // neither checks nor changes actionDelay, so existing attack cooldowns keep ticking.
@@ -61,16 +68,25 @@ constructor(private val spells: MagicSpellRegistry, private val runes: MagicRune
         // Pay HP immediately, so another cast cannot spend the same remaining hitpoints.
         player.specialEnergy = 0
         takeInstantHit(HitType.Typeless, HITPOINT_COST)
+        anim(energy_transfer_seqs.cast)
+        world.soundArea(player, energy_transfer_synths.cast, radius = 10)
+        statAdvance(stats.magic, spell.castXp)
+
+        // Delivery must survive the caster's next action and the recipient being busy.
+        worldQueues.add(TRANSFER_DELAY) { receive(target) }
+    }
+
+    private fun receive(target: Player) {
+        if (!target.isValidTarget()) return
         target.specialEnergy = constants.sa_max_energy
         target.runEnergy = constants.run_max_energy
         UpdateRun.energy(target, target.runEnergy)
-        anim(energy_transfer_seqs.cast)
         target.spotanim(energy_transfer_spots.receive)
-        statAdvance(stats.magic, spell.castXp)
     }
 }
 
 private const val HITPOINT_COST = 10
+private const val TRANSFER_DELAY = 3
 private var Player.specialEnergy by intVarp(varps.sa_energy)
 
 object energy_transfer_components : ComponentReferences() {
@@ -83,4 +99,8 @@ internal object energy_transfer_seqs : SeqReferences() {
 
 internal object energy_transfer_spots : SpotanimReferences() {
     val receive = find("quest_lunar_spellbook_energy_exchange_spot_anim")
+}
+
+internal object energy_transfer_synths {
+    val cast = SynthType(2885, "lunar_energy_transfer")
 }

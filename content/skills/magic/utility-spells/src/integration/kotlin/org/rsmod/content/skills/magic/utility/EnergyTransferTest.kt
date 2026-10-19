@@ -5,6 +5,7 @@ import com.google.inject.Scopes
 import jakarta.inject.Inject
 import net.rsprot.protocol.game.incoming.players.OpPlayerT
 import net.rsprot.protocol.game.outgoing.misc.player.UpdateRunEnergy
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import net.rsprot.protocol.util.CombinedId
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -19,8 +20,10 @@ import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.varps
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.net.rsprot.handlers.OpPlayerTHandler
 import org.rsmod.api.player.stat.hitpoints
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.spells.MagicSpellRegistry
@@ -45,7 +48,10 @@ import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.spot.EntitySpotanim
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -66,19 +72,26 @@ class EnergyTransferTest {
             cast(deps, target)
             assertEquals(89, player.hitpoints)
             assertEquals(0, player.vars[varps.sa_energy])
-            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
-            assertEquals(constants.run_max_energy, target.runEnergy)
+            assertEquals(100, target.vars[varps.sa_energy])
+            assertTrue(target.runEnergy < constants.run_max_energy)
             assertEquals(99, target.hitpoints)
             assertEquals(xp + 100, player.statMap.getXP(stats.magic))
             assertEquals(3, player.inv.count(energy_transfer_test_objs.astral_rune))
             assertEquals(2, player.inv.count(objs.law_rune))
             assertEquals(1, player.inv.count(objs.nature_rune))
+            assertFalse(UpdateRunEnergy(constants.run_max_energy) in target.client as CaptureClient)
+            advance(ticks = 2)
+            assertEquals(100, target.vars[varps.sa_energy])
+            assertTrue(target.runEnergy < constants.run_max_energy)
+            advance()
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+            assertEquals(constants.run_max_energy, target.runEnergy)
             assertTrue((target.client as CaptureClient).hasAny<UpdateRunEnergy>())
         }
 
     @ParameterizedTest
     @ValueSource(ints = [0, 2, 10])
-    fun `casting ignores existing attack cooldowns and adds no delay`(
+    fun `casting ignores existing attack cooldowns and does not stall the caster`(
         cooldown: Int,
         state: GameTestState,
     ) =
@@ -93,6 +106,90 @@ class EnergyTransferTest {
             assertEquals(nextAction, player.delay)
             assertFalse(player.isDelayed)
             assertNull(player.interaction)
+            advance(ticks = 3)
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+        }
+
+    @Test
+    fun GameTestState
+        .`cast sound is immediate and the receiving effect arrives after three ticks`() =
+        runTransferTest { deps ->
+            val target = recipient()
+            val sounds = mutableListOf<SoundArea>()
+            val effects = mutableListOf<Pair<Int, Int>>()
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                sounds +=
+                    deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+                effects += target.pendingSpotanims.map { mapClock.cycle to EntitySpotanim(it).id }
+            }
+            val castTick = mapClock.cycle + 1
+            cast(deps, target)
+            val source = ZoneGrid.from(player.coords)
+            assertEquals(listOf(SoundArea(2885, 0, 1, 10, 1, source.x, source.z)), sounds)
+            assertTrue(effects.isEmpty())
+            advance(ticks = 2)
+            assertTrue(effects.isEmpty())
+            advance()
+            assertEquals(listOf(castTick + 3 to 734), effects)
+            assertEquals(1, sounds.size)
+        }
+
+    @Test
+    fun GameTestState.`delivery survives a new caster action and a delayed recipient`() =
+        runTransferTest { deps ->
+            val target = recipient()
+            cast(deps, target)
+            val npc = spawnNpc(player.coords.translateZ(1), actionTarget)
+            player.opNpc1(npc)
+            target.withProtectedAccess { delay(10) }
+            advance()
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+            advance(ticks = 2)
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+            assertTrue(target.isDelayed)
+            assertTrue(player.ui.containsModal(interfaces.chatmenu))
+        }
+
+    @Test
+    fun GameTestState.`separate transfers keep their own three tick arrival`() =
+        runTransferTest { deps ->
+            val target = recipient()
+            cast(deps, target)
+            advance()
+            player.setVarp(varps.sa_energy, constants.sa_max_energy)
+            cast(deps, target)
+            assertEquals(100, target.vars[varps.sa_energy])
+            advance()
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+            target.setVarp(varps.sa_energy, 100)
+            advance()
+            assertEquals(100, target.vars[varps.sa_energy])
+            advance()
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+        }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `delivery skips recipients who die or log out during the wait`(
+        logout: Boolean,
+        state: GameTestState,
+    ) =
+        state.runTransferTest { deps ->
+            val target = recipient()
+            cast(deps, target)
+            val replacement =
+                if (logout) {
+                    unregisterPlayer(target)
+                    recipient()
+                } else {
+                    target.setCurrentLevel(stats.hitpoints, 0)
+                    null
+                }
+            advance(ticks = 3)
+            assertEquals(100, target.vars[varps.sa_energy])
+            assertTrue(target.runEnergy < constants.run_max_energy)
+            if (replacement != null) assertEquals(100, replacement.vars[varps.sa_energy])
+            assertEquals(89, player.hitpoints)
         }
 
     @Test
@@ -141,6 +238,11 @@ class EnergyTransferTest {
     ) =
         state.runTransferTest { deps ->
             val target = recipient()
+            val sounds = mutableListOf<SoundArea>()
+            eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+                sounds +=
+                    deps.zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+            }
             when (failure) {
                 0 -> player.setCurrentLevel(stats.hitpoints, 10)
                 1 -> player.setCurrentLevel(stats.hitpoints, 1)
@@ -168,6 +270,10 @@ class EnergyTransferTest {
             assertEquals(100, target.vars[varps.sa_energy])
             assertTrue(target.runEnergy < constants.run_max_energy)
             if (failure <= 1) assertMessageSent("You need more hitpoints to cast this spell.")
+            advance(ticks = 3)
+            assertEquals(100, target.vars[varps.sa_energy])
+            assertTrue(target.runEnergy < constants.run_max_energy)
+            assertTrue(sounds.isEmpty())
         }
 
     @Test
@@ -182,6 +288,11 @@ class EnergyTransferTest {
             assertEquals(100, target.vars[varps.sa_energy])
             assertEquals(3, player.inv.count(energy_transfer_test_objs.astral_rune))
             assertEquals(xp, player.statMap.getXP(stats.magic))
+            advance(ticks = 2)
+            assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
+            target.setVarp(varps.sa_energy, 100)
+            advance(ticks = 3)
+            assertEquals(100, target.vars[varps.sa_energy])
         }
 
     @ParameterizedTest
@@ -208,6 +319,8 @@ class EnergyTransferTest {
             }
             cast(deps, target)
             assertEquals(if (singlePlayer == 2) 89 else 99, player.hitpoints)
+            assertEquals(100, target.vars[varps.sa_energy])
+            advance(ticks = 3)
             assertEquals(
                 if (singlePlayer == 2) constants.sa_max_energy else 100,
                 target.vars[varps.sa_energy],
@@ -269,6 +382,7 @@ class EnergyTransferTest {
         val spells: MagicSpellRegistry,
         val targetSpell: OpPlayerTHandler,
         val areas: AreaIndex,
+        val zones: ZoneUpdateMap,
     )
 
     class PendingAction : PluginScript() {
