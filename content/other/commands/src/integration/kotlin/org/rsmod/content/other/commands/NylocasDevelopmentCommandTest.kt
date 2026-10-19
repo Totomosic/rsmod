@@ -1,15 +1,22 @@
 package org.rsmod.content.other.commands
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.inject.AbstractModule
+import com.google.inject.Provides
 import jakarta.inject.Inject
+import jakarta.inject.Singleton
+import java.nio.file.Path
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import net.rsprot.protocol.game.outgoing.misc.player.UpdateRunEnergy
 import net.rsprot.protocol.game.outgoing.varp.VarpLarge
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.modlevels
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varps
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
+import org.rsmod.api.parsers.json.Json
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.stat
@@ -30,6 +37,16 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 class NylocasDevelopmentCommandTest {
+    @TempDir lateinit var directory: Path
+
+    private fun module() =
+        object : AbstractModule() {
+            @Provides
+            @Singleton
+            fun store(@Json mapper: ObjectMapper): GearPresetStore =
+                GearPresetStore(mapper, directory)
+        }
+
     class Dependencies
     @Inject
     constructor(
@@ -44,7 +61,7 @@ class NylocasDevelopmentCommandTest {
     fun GameTestState.`raid options validate exclusive modes and set party current HP once`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -83,7 +100,7 @@ class NylocasDevelopmentCommandTest {
     fun GameTestState.`starting wave is validated and only the host can freeze raid options`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -113,7 +130,7 @@ class NylocasDevelopmentCommandTest {
     fun GameTestState.`every account role can create a lobby and teleport to the door`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -132,7 +149,7 @@ class NylocasDevelopmentCommandTest {
     fun GameTestState.`ordinary players create join and start a shared lobby by host name`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -209,7 +226,7 @@ class NylocasDevelopmentCommandTest {
         .`full missing and abandoned lobbies reject joins and instances stay isolated`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -242,7 +259,7 @@ class NylocasDevelopmentCommandTest {
     fun GameTestState.`start raid command initializes the HUD in the current room`() =
         runInjectedGameTest(
             Dependencies::class,
-            null,
+            module(),
             NylocasDevelopmentCommand::class,
             TheatreRaid::class,
         ) { deps ->
@@ -264,7 +281,8 @@ class NylocasDevelopmentCommandTest {
 
     @Test
     fun GameTestState.`admin enters an instance preserving plugin source coordinates`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
+        runInjectedGameTest(Dependencies::class, module(), NylocasDevelopmentCommand::class) { deps
+            ->
             player.modLevel = deps.modLevels[modlevels.admin]
             deps.handler.handle(player, ClientCheat("nylocas"))
             advance()
@@ -309,7 +327,8 @@ class NylocasDevelopmentCommandTest {
 
     @Test
     fun GameTestState.`ordinary players cannot allocate or enter the development room`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
+        runInjectedGameTest(Dependencies::class, module(), NylocasDevelopmentCommand::class) { deps
+            ->
             player.modLevel = deps.modLevels[modlevels.player]
             val original = player.coords
             for (command in listOf("nylocas", "nylocasbridge", "bloatexit", "starttob")) {
@@ -323,7 +342,8 @@ class NylocasDevelopmentCommandTest {
 
     @Test
     fun GameTestState.`empty instances are reclaimed after the player leaves`() =
-        runInjectedGameTest(Dependencies::class, null, NylocasDevelopmentCommand::class) { deps ->
+        runInjectedGameTest(Dependencies::class, module(), NylocasDevelopmentCommand::class) { deps
+            ->
             player.modLevel = deps.modLevels[modlevels.admin]
             deps.handler.handle(player, ClientCheat("nylocas"))
             advance()

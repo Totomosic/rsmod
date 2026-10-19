@@ -24,6 +24,7 @@ constructor(
     private val regionRepo: RegionRepository,
     private val bloatExit: BloatExit,
     private val raid: TheatreRaid,
+    private val gear: GearPresetService,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onCommand(
@@ -39,6 +40,7 @@ constructor(
                         }
                         telejump(room.normal[BloatExitRoom.doorstep])
                         raid.createLobby(player, room)
+                        gear.applyDefault(player)
                     }
                 if (!launched) player.mes(constants.dm_busy)
             },
@@ -54,6 +56,7 @@ constructor(
                     protectedAccess.launch(player) {
                         val destination = raid.joinLobby(player, hostName) ?: return@launch
                         telejump(destination)
+                        gear.applyDefault(player)
                     }
                 if (!launched) player.mes(constants.dm_busy)
             },

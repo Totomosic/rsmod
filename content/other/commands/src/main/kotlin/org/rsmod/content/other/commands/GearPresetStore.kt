@@ -20,7 +20,11 @@ data class GearPreset(
     val inventory: List<GearPresetItem?>,
 )
 
-data class GearPresetFile(val version: Int = 1, val setups: List<GearPreset> = emptyList())
+data class GearPresetFile(
+    val version: Int = 1,
+    val setups: List<GearPreset> = emptyList(),
+    val defaultSetupId: String? = null,
+)
 
 /** Shared snapshots, stored per creator so saving cannot overwrite another player's setup. */
 @Singleton
@@ -32,17 +36,28 @@ class GearPresetStore constructor(private val mapper: ObjectMapper, private val 
         return Files.list(root).use { files ->
             files
                 .filter { it.fileName.toString().matches(Regex("-?[0-9]+\\.json")) }
-                .flatMap { read(it).stream() }
+                .flatMap { read(it).setups.stream() }
                 .toList()
                 .sortedBy { it.name.lowercase() }
         }
     }
 
-    private fun read(file: Path): List<GearPreset> {
-        if (!Files.exists(file)) return emptyList()
+    private fun read(file: Path): GearPresetFile {
+        if (!Files.exists(file)) return GearPresetFile()
         val data = mapper.readValue(file.toFile(), GearPresetFile::class.java)
         check(data.version == 1) { "Unsupported gear preset version: ${data.version}" }
-        return data.setups
+        return data
+    }
+
+    fun defaultSetupId(characterId: Long): String? =
+        read(root.resolve("$characterId.json")).defaultSetupId
+
+    fun setDefault(characterId: Long, setupId: String?) {
+        require(setupId == null || list().any { it.id == setupId }) {
+            "That setup is no longer available. Refresh the list."
+        }
+        val data = read(root.resolve("$characterId.json"))
+        write(characterId, data.copy(defaultSetupId = setupId))
     }
 
     fun save(
@@ -56,7 +71,8 @@ class GearPresetStore constructor(private val mapper: ObjectMapper, private val 
             "Use 1–24 letters, numbers, spaces, apostrophes, dots, parentheses, underscores or hyphens."
         }
         val displayName = "[$characterName] $name"
-        val setups = read(root.resolve("$characterId.json")).toMutableList()
+        val data = read(root.resolve("$characterId.json"))
+        val setups = data.setups.toMutableList()
         val index =
             setups.indexOfFirst {
                 // Also update setups saved before creator prefixes were added.
@@ -71,10 +87,15 @@ class GearPresetStore constructor(private val mapper: ObjectMapper, private val 
                 inventory.toList(),
             )
         if (index >= 0) setups[index] = preset else setups += preset
+        write(characterId, data.copy(setups = setups))
+        return preset
+    }
+
+    private fun write(characterId: Long, data: GearPresetFile) {
         Files.createDirectories(root)
         val temporary = Files.createTempFile(root, "$characterId-", ".tmp")
         try {
-            mapper.writeValue(temporary.toFile(), GearPresetFile(setups = setups))
+            mapper.writeValue(temporary.toFile(), data)
             val destination = root.resolve("$characterId.json")
             try {
                 Files.move(temporary, destination, ATOMIC_MOVE, REPLACE_EXISTING)
@@ -84,7 +105,6 @@ class GearPresetStore constructor(private val mapper: ObjectMapper, private val 
         } finally {
             Files.deleteIfExists(temporary)
         }
-        return preset
     }
 
     companion object {
