@@ -6,6 +6,7 @@ import org.rsmod.api.config.refs.areas
 import org.rsmod.api.config.refs.queues
 import org.rsmod.api.config.refs.varns
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.entity.npc.NpcDeathState
 import org.rsmod.game.entity.npc.NpcMode
 
 public fun Npc.clearInteractionRoute() {
@@ -14,6 +15,7 @@ public fun Npc.clearInteractionRoute() {
 }
 
 public fun Npc.queueDeath() {
+    if (deathState == null) deathState = NpcDeathState(currentMapClock)
     queue(queues.death, 1)
 }
 

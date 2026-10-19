@@ -1,10 +1,12 @@
 package org.rsmod.api.game.process.npc
 
 import jakarta.inject.Inject
+import org.rsmod.api.config.refs.queues
 import org.rsmod.api.npc.access.StandardNpcAccessLauncher
 import org.rsmod.api.npc.events.NpcQueueEvents
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.hit.Hit
 import org.rsmod.game.queue.NpcQueueList
 import org.rsmod.game.type.npc.UnpackedNpcType
 
@@ -12,16 +14,24 @@ public class NpcQueueProcessor
 @Inject
 constructor(private val eventBus: EventBus, private val accessLauncher: StandardNpcAccessLauncher) {
     public fun process(npc: Npc) {
-        npc.publishExpiredQueues()
+        // An existing death starts before impacts due on its animation's first tick.
+        npc.publishExpiredQueues(Pass.Death)
+        npc.publishExpiredQueues(Pass.All)
     }
 
-    private fun Npc.publishExpiredQueues() {
+    public fun processDeathHits(npc: Npc) {
+        if (npc.deathState?.animationStarted == true) npc.publishExpiredQueues(Pass.DeathHits)
+    }
+
+    private fun Npc.publishExpiredQueues(pass: Pass) {
         while (queueList.isNotEmpty) {
             var processedNone = true
 
             val iterator = queueList.iterator() ?: break
             while (iterator.hasNext()) {
                 val queue = iterator.next()
+                if (pass == Pass.Death && queue.id != queues.death.id) continue
+                if (pass == Pass.DeathHits && queue.args !is Hit) continue
 
                 if (queue.processedCycle != currentMapClock) {
                     queue.processedCycle = currentMapClock
@@ -32,10 +42,22 @@ constructor(private val eventBus: EventBus, private val accessLauncher: Standard
                     continue
                 }
 
-                if (!isBusy) {
+                val death = deathState
+                if (
+                    queue.id == queues.death.id &&
+                        death != null &&
+                        death.queuedCycle == currentMapClock &&
+                        !death.accelerated
+                )
+                    continue
+
+                val hit = queue.args as? Hit
+                val deathHit = death?.sequenceStarted == true && hitpoints == 0 && hit != null
+                if (!isBusy || deathHit) {
                     processedNone = false
                     iterator.remove()
-                    publishEvent(queue)
+                    if (deathHit) accessLauncher.processDeathHit(this, checkNotNull(hit))
+                    else publishEvent(queue)
                 }
             }
             iterator.cleanUp()
@@ -44,6 +66,12 @@ constructor(private val eventBus: EventBus, private val accessLauncher: Standard
                 break
             }
         }
+    }
+
+    private enum class Pass {
+        Death,
+        DeathHits,
+        All,
     }
 
     private fun Npc.publishEvent(queue: NpcQueueList.Queue, type: UnpackedNpcType = visType) {

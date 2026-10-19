@@ -32,6 +32,8 @@ constructor(
             npc.processedMapClock = mapClock.cycle
             npc.previousCoords = npc.coords
             npc.tryOrDespawn {
+                // A splat arriving during the animation can shorten this tick's death deadline.
+                queues.processDeathHits(this)
                 resumePausedProcess()
                 revealProcess()
                 processHunt()
@@ -81,8 +83,9 @@ constructor(
     }
 
     private fun Npc.processQueues() {
-        if (canProcess) {
+        if (canProcess || deathState?.sequenceStarted == true) {
             queues.process(this)
+            if (deathState?.sequenceStarted == true && isNotDelayed) advanceActiveCoroutine()
         }
     }
 

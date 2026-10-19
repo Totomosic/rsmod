@@ -116,6 +116,7 @@ public suspend fun StandardNpcAccess.death(
     delayIfMoving: Boolean = true,
 ) {
     require(animationTicks > 0) { "Death animation duration must be positive: $animationTicks" }
+    npc.deathState?.sequenceStarted = true
     walk(coords)
     noneMode()
     hideAllOps()
@@ -139,8 +140,10 @@ public suspend fun StandardNpcAccess.death(
     }
 
     anim(animation)
+    npc.deathState?.animationStarted = true
     delay(animationTicks)
 
+    npc.deathState = null
     npc.clearFreeze()
 
     if (npc.respawns) {

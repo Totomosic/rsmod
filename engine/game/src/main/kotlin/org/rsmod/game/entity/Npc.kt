@@ -1,6 +1,7 @@
 package org.rsmod.game.entity
 
 import org.rsmod.annotations.InternalApi
+import org.rsmod.game.entity.npc.NpcDeathState
 import org.rsmod.game.entity.npc.NpcInfoProtocol
 import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.entity.npc.NpcUid
@@ -110,6 +111,7 @@ public class Npc(
     public var strengthLvl: Int = type.strength
     public var defenceLvl: Int = type.defence
     public var hitpoints: Int = type.hitpoints
+    public var deathState: NpcDeathState? = null
     public var rangedLvl: Int = type.ranged
     public var magicLvl: Int = type.magic
 
@@ -280,6 +282,7 @@ public class Npc(
 
     @InternalApi
     public fun setRespawnValues() {
+        deathState = null
         pendingTelejump = true
         transmog = null
         cachedHitmark = null

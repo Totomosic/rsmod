@@ -508,14 +508,16 @@ class NylocasDamageTest {
         }
 
     @ParameterizedTest
-    @CsvSource("false", "true")
-    fun `a wrong style thrall zero hit can speed up a nylo death`(
+    @CsvSource("false, false", "true, false", "true, true")
+    fun `only a matching thrall hit clamped after a player kill speeds up death`(
         thrall: Boolean,
+        matching: Boolean,
         state: GameTestState,
     ) =
         state.runDamageTest(Thralls::class, NylocasDeaths::class) { deps, room ->
             prepareThralls()
-            val target = spawnNylo(deps, room, NylocasStyle.Magic).apply { aiTimer(0) }
+            val style = if (matching) NylocasStyle.Melee else NylocasStyle.Magic
+            val target = spawnNylo(deps, room, style).apply { aiTimer(0) }
             player.telejump(target.coords.translateZ(-1))
             val impacts = mutableListOf<Int>()
             eventBus.subscribeKeyed(NpcHitEvents.Impact::class.java, target.id.toLong()) {
@@ -524,16 +526,24 @@ class NylocasDamageTest {
             val hp = target.hitpoints
             eventBus.publish(PlayerAttackTarget(player, target))
             if (thrall) player.ifButton(thrall_components.zombie)
+            random.next = 3
             advance(ticks = 3)
-            // Both hits land together, with the lethal player hit queued before the thrall zero.
-            target.queueHit(player, delay = 2, HitType.Magic, damage = hp)
+            // Both hits land together. Only positive thrall damage can be clamped by the kill.
+            target.queueHit(
+                player,
+                delay = 2,
+                if (matching) HitType.Melee else HitType.Magic,
+                damage = hp,
+            )
             advance()
             if (thrall)
-                assertTrue(target.pendingHits().any { it.type == HitType.Melee && it.damage == 0 })
+                assertTrue(
+                    target.pendingHits().any { it.isThrall && it.damage == if (matching) 3 else 0 }
+                )
             advance()
             assertEquals(0, target.hitpoints)
             assertEquals(if (thrall) listOf(hp, 0) else listOf(hp), impacts)
-            assertEquals(thrall, target.isDelayed)
+            assertEquals(thrall && matching, target.isDelayed)
         }
 
     private fun GameTestScope.prepareThralls() {

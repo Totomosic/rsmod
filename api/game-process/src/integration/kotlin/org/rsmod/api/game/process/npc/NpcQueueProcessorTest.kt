@@ -48,18 +48,30 @@ class NpcQueueProcessorTest {
 
             // On the next cycle (advance by 1), both hits (7 and 5 damage) are processed.
             // The 7 damage hit reduces the npc's hitpoints to 0 and queues the death sequence.
-            // Because the death queue is added at the end of the list, and the queue that submitted
-            // it was not the last in the list, the death queue ends up being processed in the same
-            // cycle - after the remaining queues - instead of waiting for the next cycle.
-            // This is the "speed-up" bug/quirk, where (death) queues are triggered sooner than they
-            // normally would.
+            // The second positive hit is clamped to zero after the player kill. This explicitly
+            // permits the death queue to run in the lethal tick.
             advance(ticks = 1)
             check(npc.hitpoints == 0)
             check(!npc.hasMovedPreviousCycle)
 
-            // If death queue script was triggered, the npc should now be delayed.
+            // The death queue script was triggered, so the npc should now be delayed.
             assertTrue(npc.isDelayed)
             assertEquals(NpcMode.None, npc.mode)
+        }
+
+    @Test
+    fun GameTestState.`a future hit does not trigger death queue speed-up`() =
+        runGameTest(NpcHitScript::class, NpcDeathScript::class) {
+            val npc = spawnNpc(CoordGrid(0, 50, 50, 0, 0), man)
+            player.placeAt(npc.coords.translateZ(1))
+            npc.queueHit(player, delay = 1, HitType.Melee, damage = 7)
+            npc.queueHit(player, delay = 20, HitType.Melee, damage = 5)
+            advance()
+            assertEquals(0, npc.hitpoints)
+            assertFalse(npc.isDelayed)
+            advance()
+            assertTrue(npc.isDelayed)
+            advanceUntil(predicate = { !npc.isSlotAssigned }, timeoutTicks = 15)
         }
 
     private companion object {

@@ -11,6 +11,7 @@ import org.rsmod.api.player.output.soundSynth
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.entity.npc.NpcDeathState
 import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.type.headbar.HeadbarType
@@ -28,6 +29,7 @@ constructor(private val playerList: PlayerList, private val eventBus: EventBus) 
         }
 
         if (changedDamage == 0) {
+            npc.accelerateDeathForOverkill()
             val zeroDamageHitmark = hitmark_groups.zero_damage
             val modifiedHitmark =
                 hit.hitmark.copy(
@@ -57,12 +59,14 @@ constructor(private val playerList: PlayerList, private val eventBus: EventBus) 
                 "health=${npc.hitpoints}, hit=$hit"
         }
         // TODO(combat): Process recoils, retribution(?), etc.
+        val wasAlive = npc.hitpoints > 0
         npc.hitpoints -= hit.damage
 
         playDefendSound(hit)
 
-        val queueDeath = npc.hitpoints == 0 && queues.death !in npc.queueList
+        val queueDeath = wasAlive && npc.hitpoints == 0 && queues.death !in npc.queueList
         if (queueDeath) {
+            npc.deathState = NpcDeathState(mapClock, playerKill = hit.isFromPlayer && !hit.isThrall)
             queueDeath()
             if (hit.damage > 0) {
                 val killer = npc.findHero(playerList)
@@ -79,6 +83,17 @@ constructor(private val playerList: PlayerList, private val eventBus: EventBus) 
         npc.showHeadbar(headbar)
 
         npc.publishHitEvent(hit)
+    }
+
+    private fun Npc.accelerateDeathForOverkill() {
+        val death = deathState ?: return
+        if (!death.playerKill || death.accelerated) return
+        if (currentMapClock != death.queuedCycle && !death.animationStarted) return
+        death.accelerated = true
+        if (death.animationStarted) {
+            // Keep the running death coroutine and advance its existing deadline once.
+            delay = maxOf(currentMapClock, delay - 1)
+        }
     }
 
     private fun StandardNpcAccess.playDefendSound(hit: Hit) {
