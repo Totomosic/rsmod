@@ -6,6 +6,8 @@ import org.rsmod.api.type.editors.dbrow.DbRowEditor
 import org.rsmod.api.type.editors.dbrow.DbRowEditorResolver
 import org.rsmod.api.type.editors.dbtable.DbTableEditor
 import org.rsmod.api.type.editors.dbtable.DbTableEditorResolver
+import org.rsmod.api.type.editors.enums.EnumEditor
+import org.rsmod.api.type.editors.enums.EnumEditorResolver
 import org.rsmod.api.type.editors.headbar.HeadbarEditor
 import org.rsmod.api.type.editors.headbar.HeadbarEditorResolver
 import org.rsmod.api.type.editors.hitmark.HitmarkEditor
@@ -28,6 +30,7 @@ public class TypeEditorResolverMap
 constructor(
     private val dbRowResolver: DbRowEditorResolver,
     private val dbTableResolver: DbTableEditorResolver,
+    private val enumResolver: EnumEditorResolver,
     private val headbarResolver: HeadbarEditorResolver,
     private val hitmarkResolver: HitmarkEditorResolver,
     private val invResolver: InvEditorResolver,
@@ -107,6 +110,7 @@ constructor(
             when (this) {
                 is DbRowEditor -> dbRowResolver
                 is DbTableEditor -> dbTableResolver
+                is EnumEditor -> enumResolver
                 is HeadbarEditor -> headbarResolver
                 is HitmarkEditor -> hitmarkResolver
                 is InvEditor -> invResolver

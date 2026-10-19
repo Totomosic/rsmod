@@ -6,6 +6,16 @@ import org.rsmod.game.inv.isAnyType
 import org.rsmod.game.inv.isType
 
 public object EquipmentChecks {
+    public fun isChargedDizanasQuiver(obj: InvObj?): Boolean =
+        obj.isAnyType(
+            objs.dizanas_quiver_charged,
+            objs.dizanas_quiver_charged_trouver,
+            objs.dizanas_quiver_infinite,
+            objs.dizanas_quiver_infinite_trouver,
+            objs.dizanas_max_cape,
+            objs.dizanas_max_cape_trouver,
+        )
+
     public fun isSmokeStaff(obj: InvObj?): Boolean =
         obj.isAnyType(objs.smoke_battlestaff, objs.mystic_smoke_staff, objs.twinflame_staff)
 

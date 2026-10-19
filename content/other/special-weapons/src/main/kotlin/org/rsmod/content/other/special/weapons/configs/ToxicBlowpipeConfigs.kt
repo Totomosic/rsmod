@@ -49,13 +49,21 @@ internal object ToxicBlowpipeObjEditor : ObjEditor() {
                 objs.blazing_blowpipe_uncharged,
             )) {
             edit(pipe) {
+                val ascension =
+                    pipe == objs.blazing_blowpipe || pipe == objs.blazing_blowpipe_uncharged
+                if (ascension) {
+                    name =
+                        if (pipe == objs.blazing_blowpipe) "Ascension crossbows"
+                        else "Ascension crossbows (empty)"
+                }
                 category = categories.throwing_weapon.id
                 weaponCategory = WeaponCategory.Thrown.id
                 param[params.attackrate] = 3
-                param[params.attackrange] = 5
+                param[params.attackrange] = if (ascension) 6 else 5
                 val loaded = pipe == objs.toxic_blowpipe || pipe == objs.blazing_blowpipe
-                param[params.attack_ranged] = if (loaded) 30 else 0
-                param[params.ranged_strength] = if (loaded) 20 else 0
+                param[params.attack_ranged] = if (!loaded) 0 else if (ascension) 34 else 30
+                // Dragon darts add 35 strength, bringing Ascension crossbows to 58 total.
+                param[params.ranged_strength] = if (!loaded) 0 else if (ascension) 23 else 20
                 objvar =
                     mutableListOf(
                         varobjs.snakeboss_blowpipe_darrtype,

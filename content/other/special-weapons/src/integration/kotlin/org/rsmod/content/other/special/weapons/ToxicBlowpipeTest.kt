@@ -44,6 +44,7 @@ import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackModule
 import org.rsmod.api.specials.SpecialAttackRegistry
 import org.rsmod.api.specials.SpecialAttackType
+import org.rsmod.api.specials.weapon.SpecialAttackWeapons
 import org.rsmod.api.spells.MagicSpellModule
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.npcTypeFactory
@@ -137,13 +138,15 @@ class ToxicBlowpipeTest {
     }
 
     @Test
-    fun GameTestState.`both loaded cosmetics have a fifty percent ranged special`() =
+    fun GameTestState.`only the regular blowpipe has a fifty percent ranged special`() =
         runBlowpipeTest { deps ->
-            for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
-                val special = deps.specials[InvObj(pipe)]
-                assertTrue(special is SpecialAttack.Ranged)
-                assertEquals(500, (special as SpecialAttack.Ranged).energyInHundreds)
-            }
+            val special = deps.specials[InvObj(objs.toxic_blowpipe)]
+            assertTrue(special is SpecialAttack.Ranged)
+            assertEquals(500, (special as SpecialAttack.Ranged).energyInHundreds)
+            assertNull(deps.specials[InvObj(objs.blazing_blowpipe)])
+            assertNull(deps.specials[InvObj(objs.blazing_blowpipe_uncharged)])
+            assertEquals(0, deps.specialWeapons.getSpecialEnergy(objs.blazing_blowpipe))
+            assertEquals(500, deps.specialWeapons.getSpecialEnergy(objs.toxic_blowpipe))
         }
 
     @ParameterizedTest
@@ -153,94 +156,85 @@ class ToxicBlowpipeTest {
         playerTarget: Boolean,
         state: GameTestState,
     ) {
-        for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
-            state.runBlowpipeTest { deps ->
-                val target =
-                    if (playerTarget) {
-                        registerPlayer(CoordGrid(3200, 3200)).also {
-                            it.setBaseLevel(stats.hitpoints, 99)
-                            it.setCurrentLevel(stats.hitpoints, 99)
-                        }
-                    } else {
-                        spawnDummy()
+        state.runBlowpipeTest { deps ->
+            val target =
+                if (playerTarget) {
+                    registerPlayer(CoordGrid(3200, 3200)).also {
+                        it.setBaseLevel(stats.hitpoints, 99)
+                        it.setCurrentLevel(stats.hitpoints, 99)
                     }
-                player.placeAt(target.coords.translateZ(-distance))
-                equip(pipe = pipe)
-                val style =
-                    if (distance == 7) RangedAttackStyle.Longrange else RangedAttackStyle.Rapid
-                rollShot(damage = 7)
-                shoot(deps, target, style)
-                val normalAnimation = player.pendingSequence.id
-                player.pendingSequence = EntitySeq.NULL
-                val normal =
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
-                        .filterIsInstance<MapProjAnimV2>()
-                        .single()
-                rollShot(damage = 7)
-                assertTrue(useSpecial(deps, target, style))
-                assertEquals(normalAnimation, player.pendingSequence.id)
-                val special =
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
-                        .filterIsInstance<MapProjAnimV2>()
-                        .last()
-                assertEquals(1043, special.id)
-                assertTrue(normal.id != special.id)
-                assertEquals(normal.endTime + if (distance > 1) 30 else 0, special.endTime)
-                assertEquals(
-                    if (distance == 7) 3 else 2,
-                    player.actionDelay - player.currentMapClock,
-                )
-                if (target is Npc) {
-                    val hits = target.pendingHits()
-                    assertEquals(1 + normal.endTime / 30, hits.first().second)
-                    assertEquals(1 + special.endTime / 30, hits.last().second)
-                    assertEquals(
-                        hits.first().second + if (distance > 1) 1 else 0,
-                        hits.last().second,
-                    )
+                } else {
+                    spawnDummy()
                 }
-                assertEquals(8, Blowpipe.darts(player.righthand))
-                assertEquals(8, Blowpipe.scales(player.righthand))
-                val sound =
-                    checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
-                        .filterIsInstance<SoundArea>()
-                        .last()
-                assertEquals(0, sound.delay)
-                assertEquals(ZoneGrid.from(player.coords).x, sound.xInZone)
-                assertEquals(ZoneGrid.from(player.coords).z, sound.zInZone)
-                val initialHp =
-                    when (target) {
-                        is Npc -> target.hitpoints
-                        is Player -> target.hitpoints
-                    }
-                val normalDelay = 1 + normal.endTime / 30
-                val specialDelay = 1 + special.endTime / 30
-                if (normalDelay > 1) advance(ticks = normalDelay - 1)
+            player.placeAt(target.coords.translateZ(-distance))
+            equip()
+            val style = if (distance == 7) RangedAttackStyle.Longrange else RangedAttackStyle.Rapid
+            rollShot(damage = 7)
+            shoot(deps, target, style)
+            val normalAnimation = player.pendingSequence.id
+            player.pendingSequence = EntitySeq.NULL
+            val normal =
+                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                    .filterIsInstance<MapProjAnimV2>()
+                    .single()
+            rollShot(damage = 7)
+            assertTrue(useSpecial(deps, target, style))
+            assertEquals(normalAnimation, player.pendingSequence.id)
+            val special =
+                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                    .filterIsInstance<MapProjAnimV2>()
+                    .last()
+            assertEquals(1043, special.id)
+            assertTrue(normal.id != special.id)
+            assertEquals(normal.endTime + if (distance > 1) 30 else 0, special.endTime)
+            assertEquals(if (distance == 7) 3 else 2, player.actionDelay - player.currentMapClock)
+            if (target is Npc) {
+                val hits = target.pendingHits()
+                assertEquals(1 + normal.endTime / 30, hits.first().second)
+                assertEquals(1 + special.endTime / 30, hits.last().second)
+                assertEquals(hits.first().second + if (distance > 1) 1 else 0, hits.last().second)
+            }
+            assertEquals(8, Blowpipe.darts(player.righthand))
+            assertEquals(8, Blowpipe.scales(player.righthand))
+            val sound =
+                checkNotNull(deps.zoneUpdates[ZoneKey.from(player.coords)])
+                    .filterIsInstance<SoundArea>()
+                    .last()
+            assertEquals(0, sound.delay)
+            assertEquals(ZoneGrid.from(player.coords).x, sound.xInZone)
+            assertEquals(ZoneGrid.from(player.coords).z, sound.zInZone)
+            val initialHp =
+                when (target) {
+                    is Npc -> target.hitpoints
+                    is Player -> target.hitpoints
+                }
+            val normalDelay = 1 + normal.endTime / 30
+            val specialDelay = 1 + special.endTime / 30
+            if (normalDelay > 1) advance(ticks = normalDelay - 1)
+            assertEquals(
+                initialHp,
+                when (target) {
+                    is Npc -> target.hitpoints
+                    is Player -> target.hitpoints
+                },
+            )
+            advance()
+            assertEquals(
+                initialHp - if (normalDelay == specialDelay) 14 else 7,
+                when (target) {
+                    is Npc -> target.hitpoints
+                    is Player -> target.hitpoints
+                },
+            )
+            if (specialDelay > normalDelay) {
+                advance(ticks = specialDelay - normalDelay)
                 assertEquals(
-                    initialHp,
+                    initialHp - 14,
                     when (target) {
                         is Npc -> target.hitpoints
                         is Player -> target.hitpoints
                     },
                 )
-                advance()
-                assertEquals(
-                    initialHp - if (normalDelay == specialDelay) 14 else 7,
-                    when (target) {
-                        is Npc -> target.hitpoints
-                        is Player -> target.hitpoints
-                    },
-                )
-                if (specialDelay > normalDelay) {
-                    advance(ticks = specialDelay - normalDelay)
-                    assertEquals(
-                        initialHp - 14,
-                        when (target) {
-                            is Npc -> target.hitpoints
-                            is Player -> target.hitpoints
-                        },
-                    )
-                }
             }
         }
     }
@@ -431,17 +425,110 @@ class ToxicBlowpipeTest {
     }
 
     @Test
-    fun GameTestState.`both cosmetics use light ranged attacks at OSRS speed and range`() =
+    fun GameTestState.`ascension crossbows use light ranged attacks with six tile range`() =
         runBlowpipeTest { deps ->
             for (pipe in listOf(objs.toxic_blowpipe, objs.blazing_blowpipe)) {
                 equip(pipe = pipe)
                 assertEquals(AttackType.Light, deps.types.get(player))
-                assertEquals(5, deps.objTypes[pipe].param(params.attackrange))
+                assertEquals(
+                    if (pipe == objs.blazing_blowpipe) 6 else 5,
+                    deps.objTypes[pipe].param(params.attackrange),
+                )
                 assertEquals(2, deps.speeds.actual(player, AttackStyle.RapidRanged))
                 assertEquals(3, deps.speeds.actual(player, AttackStyle.AccurateRanged))
                 assertEquals(3, deps.speeds.actual(player, AttackStyle.LongrangeRanged))
                 assertNotNull(deps.registry.getRanged(player.righthand!!))
             }
+        }
+
+    @Test
+    fun GameTestState.`ascension dragon darts total 34 accuracy and 58 strength`() =
+        runBlowpipeTest { deps ->
+            equip(pipe = objs.blazing_blowpipe)
+            player.quiver = InvObj(objs.dragon_arrow, 100)
+            assertEquals("Ascension crossbows", deps.objTypes[objs.blazing_blowpipe].name)
+            assertEquals(34, deps.bonuses.offensiveRangedBonus(player))
+            assertEquals(58, deps.bonuses.rangedStrengthBonus(player))
+        }
+
+    @Test
+    fun GameTestState.`charged quivers boost ascension stored darts without adding arrow stats`() =
+        runBlowpipeTest { deps ->
+            player.quiver = InvObj(objs.dragon_arrow, 100)
+            for (quiver in
+                listOf(
+                    objs.dizanas_quiver_charged,
+                    objs.dizanas_quiver_charged_trouver,
+                    objs.dizanas_quiver_infinite,
+                    objs.dizanas_quiver_infinite_trouver,
+                    objs.dizanas_max_cape,
+                    objs.dizanas_max_cape_trouver,
+                )) {
+                player.back = InvObj(quiver)
+                val cape = deps.objTypes[quiver]
+                equip(pipe = objs.blazing_blowpipe)
+                assertEquals(
+                    44 + cape.param(params.attack_ranged),
+                    deps.bonuses.offensiveRangedBonus(player),
+                )
+                assertEquals(
+                    59 +
+                        cape.param(params.ranged_strength) +
+                        cape.param(params.additive_ranged_strength),
+                    deps.bonuses.rangedStrengthBonus(player),
+                )
+                equip()
+                assertEquals(
+                    30 + cape.param(params.attack_ranged),
+                    deps.bonuses.offensiveRangedBonus(player),
+                )
+                assertEquals(
+                    55 +
+                        cape.param(params.ranged_strength) +
+                        cape.param(params.additive_ranged_strength),
+                    deps.bonuses.rangedStrengthBonus(player),
+                )
+            }
+            player.back = InvObj(objs.dizanas_quiver_uncharged)
+            val cape = deps.objTypes[objs.dizanas_quiver_uncharged]
+            equip(pipe = objs.blazing_blowpipe)
+            assertEquals(
+                34 + cape.param(params.attack_ranged),
+                deps.bonuses.offensiveRangedBonus(player),
+            )
+            assertEquals(
+                58 +
+                    cape.param(params.ranged_strength) +
+                    cape.param(params.additive_ranged_strength),
+                deps.bonuses.rangedStrengthBonus(player),
+            )
+        }
+
+    @Test
+    fun GameTestState
+        .`ascension fires at six tiles with an armed special without spending energy`() =
+        runBlowpipeTest(combat = true) { deps ->
+            val npc = spawnDummy()
+            equip(pipe = objs.blazing_blowpipe)
+            val firingTile = npc.coords.translateZ(-6)
+            player.placeAt(firingTile)
+            player.quiver = InvObj(objs.dragon_arrow, 5)
+            allocZoneCollision(player.coords)
+            allocZoneCollision(npc.coords)
+            advance(ticks = 20)
+            player.attackMode = 1 // Rapid
+            player.specialEnergy = 1000
+            player.selectedSpecial = SpecialAttackType.Weapon.varValue
+            rollShot(damage = 7)
+            player.opNpc2(npc)
+            advance()
+            assertEquals(1000, player.vars[varps.sa_energy])
+            assertEquals(firingTile, player.coords)
+            assertEquals(7, npc.pendingHits().single().first.damage)
+            assertEquals(9, Blowpipe.darts(player.righthand))
+            assertEquals(9, Blowpipe.scales(player.righthand))
+            assertEquals(5, player.quiver?.count)
+            assertEquals(2, player.actionDelay - player.currentMapClock)
         }
 
     @Test
@@ -851,6 +938,7 @@ class ToxicBlowpipeTest {
         val zoneUpdates: ZoneUpdateMap,
         val specials: SpecialAttackRegistry,
         val accuracy: PvNRangedAccuracy,
+        val specialWeapons: SpecialAttackWeapons,
     )
 
     private object TestModule : AbstractModule() {
@@ -865,6 +953,7 @@ class ToxicBlowpipeTest {
     }
 
     private companion object {
+        private var Player.attackMode by intVarp(varps.com_mode)
         private var Player.specialEnergy by intVarp(varps.sa_energy)
         private var Player.selectedSpecial by intVarp(varps.sa_attack)
 

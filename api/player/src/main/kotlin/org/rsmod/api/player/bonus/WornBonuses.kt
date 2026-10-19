@@ -7,6 +7,7 @@ import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.config.refs.varps
+import org.rsmod.api.player.back
 import org.rsmod.api.player.hands
 import org.rsmod.api.player.hat
 import org.rsmod.api.player.legs
@@ -15,6 +16,7 @@ import org.rsmod.api.player.torso
 import org.rsmod.api.player.worn.Blowpipe
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
+import org.rsmod.game.inv.isType
 import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.type.obj.isType
@@ -209,9 +211,16 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
             magicDmg += 50
         }
 
-        // TODO: +10 off ranged and +1 ranged str with dizana's quiver.
-        //  Verify if this is visible in equipment bonus interface. If it's not then it can be
-        //  handled purely in combat formulae and not here.
+        // Ascension crossbows receive the charged quiver bonus with their stored darts.
+        // Ammunition in Wearpos.Quiver still contributes no stats and is never consumed.
+        if (
+            player.righthand.isType(objs.blazing_blowpipe) &&
+                Blowpipe.dartType(player.righthand) != null &&
+                EquipmentChecks.isChargedDizanasQuiver(player.back)
+        ) {
+            offRange += 10
+            rangedStr += 1
+        }
 
         return Bonuses(
             offStab = offStab,

@@ -50,7 +50,6 @@ constructor(
         val weapon = ToxicBlowpipe(weaponManager, objTypes, ammunition, damageRandom)
         val special = ToxicBlowpipeSpecial(weapon)
         registerRanged(objs.toxic_blowpipe, special)
-        registerRanged(objs.blazing_blowpipe, special)
     }
 
     private class ToxicBlowpipeSpecial(private val weapon: ToxicBlowpipe) : RangedSpecialAttack {
