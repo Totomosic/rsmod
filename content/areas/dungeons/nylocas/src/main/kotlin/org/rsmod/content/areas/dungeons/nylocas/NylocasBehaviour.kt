@@ -189,7 +189,10 @@ constructor(
             val age = clock.cycle - state.spawnCycle
             if (state.expiring) {
                 if (age >= state.spawn.size.expiryRemovalAge) {
-                    explode(npc, state)
+                    if (state.spawn.size == NylocasSize.Small) {
+                        // The detached visual survives removal; blast damage already landed.
+                        world.spotanimMap(nylocas_spots.explosion(state.style), npc.coords)
+                    }
                     npcRepo.del(npc, Int.MAX_VALUE)
                     iterator.remove()
                     if (state.spawn.size == NylocasSize.Big) splits += npc to state
@@ -211,6 +214,7 @@ constructor(
                 npc.delay = state.spawnCycle + state.spawn.size.expiryRemovalAge + 1
                 npc.resetAnim()
                 npc.anim(nylocas_seqs.expiry(state.spawn.size, state.style))
+                explode(npc, state)
             }
         }
         // Children extend active: add them only after the lifetime iteration finishes.
@@ -268,12 +272,9 @@ constructor(
     }
 
     private fun explode(npc: Npc, state: State) {
-        if (state.spawn.size == NylocasSize.Small) {
-            // The small's main explosion survives the NPC as a map effect.
-            world.spotanimMap(nylocas_spots.explosion(state.style), npc.coords)
-        }
-        // Provisional combat model, pending recording-backed damage measurements:
-        // a uniform 0..18/21 typeless roll, once at removal, within one tile of the
+        // User-confirmed timing: blast once when the natural-expiry animation starts.
+        // Provisional damage/radius model, pending recording-backed measurements:
+        // a uniform 0..18/21 typeless roll within one tile of the
         // NPC's footprint (including diagonals). Protection prayers do not reduce it.
         val maxHit = if (state.spawn.size == NylocasSize.Small) 18 else 21
         for (player in players) {

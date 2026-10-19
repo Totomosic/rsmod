@@ -183,20 +183,27 @@ class NylocasExpiryTest {
             table(spawn),
             NylocasEncounter::class,
             TheatreRaid::class,
+            PlayerHitScript::class,
         ) { deps ->
             start(deps)
             val npc = deps.npcs.single()
             advance(ticks = 49)
+            player.telejump(npc.coords)
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
             npc.hitpoints = 0
             npc.queue(queues.death, 1)
+            random.next = 18
             advance(ticks = 7)
             // No default death script is registered: expiry must leave the kill alone.
+            assertEquals(99, player.hitpoints)
             assertTrue(npc.isSlotAssigned)
             assertFalse(npc.isValidTarget())
             assertTrue(npc.delay < deps.clock.cycle)
             deps.npcRepo.del(npc, Int.MAX_VALUE)
             advance(ticks = 60)
             assertEquals(0, deps.npcs.count())
+            assertEquals(99, player.hitpoints)
         }
     }
 
@@ -230,7 +237,7 @@ class NylocasExpiryTest {
 
     @ParameterizedTest
     @CsvSource("Small, 51, 52, 18", "Big, 52, 55, 21")
-    fun `provisional explosion hits its footprint and adjacent tiles once in the same instance`(
+    fun `expiry blast hits once at animation start within its footprint and adjacent tiles`(
         size: NylocasSize,
         animationAge: Int,
         removalAge: Int,
@@ -250,7 +257,6 @@ class NylocasExpiryTest {
             advance(ticks = animationAge - 1)
             val source = CoordGrid(3295, 4247, 0)
             npc.telejump(room.normal[source])
-            advance()
             player.telejump(room.normal[source])
             val near = registerPlayer(coords = room.normal[source.translate(npc.size, npc.size)])
             val westCorner = registerPlayer(coords = room.normal[source.translate(-1, -1)])
@@ -265,7 +271,6 @@ class NylocasExpiryTest {
             VarPlayerIntMapSetter.set(player, varbits.protect_from_melee, 1)
             VarPlayerIntMapSetter.set(player, varbits.protect_from_missiles, 1)
             VarPlayerIntMapSetter.set(player, varbits.protect_from_magic, 1)
-            advance(ticks = removalAge - animationAge - 1)
             for (target in listOf(player, near, westCorner)) assertEquals(99, target.hitpoints)
             random.next = maxHit
             random.then = maxHit
@@ -276,6 +281,12 @@ class NylocasExpiryTest {
                 target.hitpoints,
             )
             for (target in listOf(far, upstairs, outsider)) assertEquals(99, target.hitpoints)
+            assertTrue(npc.isSlotAssigned)
+            // A repeated blast would deal damage; 1 also remains a valid split-style index.
+            random.next = 1
+            random.then = 1
+            random.then = 1
+            advance(ticks = removalAge - animationAge)
             assertFalse(npc.isSlotAssigned)
             advance(ticks = 4)
             for (target in listOf(player, near, westCorner)) assertEquals(

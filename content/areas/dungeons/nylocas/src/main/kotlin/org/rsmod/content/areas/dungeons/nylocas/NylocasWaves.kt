@@ -61,7 +61,7 @@ data class NylocasSpawn(
     val sourceOverride: CoordGrid? = null,
 ) {
     // Ages are zero-based: the spawn snapshot is age 0. Null late styles retain the
-    // last confirmed style; the corpus has no living age-26 samples for three flickers.
+    // previous style. Every flickering lane spawn has an explicit age-26 style.
     fun styleAtAge(age: Int): NylocasStyle =
         when {
             age >= 26 && styleAt26 != null -> styleAt26
@@ -117,6 +117,7 @@ class NylocasWaveTable(val waves: List<NylocasWave>) {
     // Delays belong to the incoming wave (the reference's naturalStall belongs to
     // the outgoing wave). In particular wave 6 follows wave 5 by 16 ticks.
     // Physical anchors and pillar targets override the guide's display slots.
+    // Age-26 styles for wave 18 west, 19 east, and 20 south bigs are user-confirmed.
     @Inject
     constructor() :
         this(
@@ -264,12 +265,12 @@ class NylocasWaveTable(val waves: List<NylocasWave>) {
                     ticksAfterPrevious = 12,
                     eastSouth = NylocasSpawn(Big, Ranged, NorthWest, Magic, Ranged, Magic),
                     southWest = NylocasSpawn(Big, Ranged, SouthWest, Magic, Ranged, Magic),
-                    westSouth = NylocasSpawn(Big, Ranged, null, Magic, Ranged, null),
+                    westSouth = NylocasSpawn(Big, Ranged, null, Magic, Ranged, Magic),
                 ),
                 // Wave 19
                 NylocasWave(
                     ticksAfterPrevious = 8,
-                    eastSouth = NylocasSpawn(Big, Magic, null, Melee, Magic, null),
+                    eastSouth = NylocasSpawn(Big, Magic, null, Melee, Magic, Melee),
                     southWest = NylocasSpawn(Big, Magic, SouthEast, Melee, Magic, Melee),
                     westSouth = NylocasSpawn(Big, Magic, NorthEast, Melee, Magic, Melee),
                 ),
@@ -277,7 +278,7 @@ class NylocasWaveTable(val waves: List<NylocasWave>) {
                 NylocasWave(
                     ticksAfterPrevious = 12,
                     eastSouth = NylocasSpawn(Big, Melee, NorthEast, Ranged, Melee, Ranged),
-                    southWest = NylocasSpawn(Big, Magic, null, Ranged, Melee, null),
+                    southWest = NylocasSpawn(Big, Magic, null, Ranged, Melee, Ranged),
                     westSouth = NylocasSpawn(Big, Melee, NorthWest, Ranged, Melee, Ranged),
                 ),
                 // Wave 21

@@ -18,7 +18,7 @@ class NylocasWavesTest {
     constructor(val regions: RegionRegistry, val npcs: NpcList, val raid: TheatreRaid)
 
     @Test
-    fun `all wave definitions match the recording backed spawn and style matrix`() {
+    fun `all wave definitions match the recorded and user confirmed spawn and style matrix`() {
         val waves = NylocasWaveTable().waves
         val fixtures = fixtures()
         assertEquals(31, waves.size)
@@ -43,16 +43,9 @@ class NylocasWavesTest {
                 }
             }
         }
-        assertEquals(
-            setOf(
-                18 to NylocasSlot.WestSouth,
-                19 to NylocasSlot.EastSouth,
-                20 to NylocasSlot.SouthWest,
-            ),
-            fixtures
-                .filter { it.style5 != null && it.style26 == null }
-                .map { it.wave to it.slot }
-                .toSet(),
+        assertTrue(
+            fixtures.filter { it.style5 != null }.all { it.style26 != null },
+            "Every flickering spawn must have an age-26 style",
         )
     }
 
@@ -202,8 +195,9 @@ class NylocasWavesTest {
             assertEquals(31, player.vars[tob_varbits.progress_value])
         }
 
-    // Frozen from lane-spawn-targets.csv and positive-HP lifecycle-waves.csv. The
-    // reference's outgoing naturalStall is shifted to the following wave here.
+    // Frozen from lane-spawn-targets.csv and positive-HP lifecycle-waves.csv, with
+    // user-confirmed age-26 styles for wave 18 west, 19 east, and 20 south bigs.
+    // The reference's outgoing naturalStall is shifted to the following wave here.
     private fun fixtures(): List<Fixture> =
         checkNotNull(javaClass.getResourceAsStream("/nylocas-waves.csv"))
             .bufferedReader()

@@ -65,12 +65,12 @@ wave,ticks_after_previous,slot,x,y,size,initial_style,target,style_at_5,style_at
 17,4,WestSouth,3281,4248,Big,Magic,SouthWest,Melee,Magic,Melee
 18,12,EastSouth,3309,4248,Big,Ranged,NorthWest,Magic,Ranged,Magic
 18,12,SouthWest,3295,4233,Big,Ranged,SouthWest,Magic,Ranged,Magic
-18,12,WestSouth,3281,4248,Big,Ranged,Player,Magic,Ranged,
-19,8,EastSouth,3309,4248,Big,Magic,Player,Melee,Magic,
+18,12,WestSouth,3281,4248,Big,Ranged,Player,Magic,Ranged,Magic
+19,8,EastSouth,3309,4248,Big,Magic,Player,Melee,Magic,Melee
 19,8,SouthWest,3295,4233,Big,Magic,SouthEast,Melee,Magic,Melee
 19,8,WestSouth,3281,4248,Big,Magic,NorthEast,Melee,Magic,Melee
 20,12,EastSouth,3309,4248,Big,Melee,NorthEast,Ranged,Melee,Ranged
-20,12,SouthWest,3295,4233,Big,Magic,Player,Ranged,Melee,
+20,12,SouthWest,3295,4233,Big,Magic,Player,Ranged,Melee,Ranged
 20,12,WestSouth,3281,4248,Big,Melee,NorthWest,Ranged,Melee,Ranged
 21,16,EastSouth,3310,4248,Small,Ranged,Player,Melee,Ranged,Magic
 21,16,EastNorth,3310,4249,Small,Ranged,NorthEast,Melee,Ranged,Melee
