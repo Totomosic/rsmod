@@ -80,7 +80,7 @@ class EnergyTransferTest {
             assertEquals(2, player.inv.count(objs.law_rune))
             assertEquals(1, player.inv.count(objs.nature_rune))
             assertFalse(UpdateRunEnergy(constants.run_max_energy) in target.client as CaptureClient)
-            advance(ticks = 2)
+            advance(ticks = 3)
             assertEquals(100, target.vars[varps.sa_energy])
             assertTrue(target.runEnergy < constants.run_max_energy)
             advance()
@@ -106,13 +106,13 @@ class EnergyTransferTest {
             assertEquals(nextAction, player.delay)
             assertFalse(player.isDelayed)
             assertNull(player.interaction)
-            advance(ticks = 3)
+            advance(ticks = 4)
             assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
         }
 
     @Test
     fun GameTestState
-        .`cast sound is immediate and the receiving effect arrives after three ticks`() =
+        .`cast sound is immediate and the receiving effect arrives after four ticks`() =
         runTransferTest { deps ->
             val target = recipient()
             val sounds = mutableListOf<SoundArea>()
@@ -127,10 +127,10 @@ class EnergyTransferTest {
             val source = ZoneGrid.from(player.coords)
             assertEquals(listOf(SoundArea(2885, 0, 1, 10, 1, source.x, source.z)), sounds)
             assertTrue(effects.isEmpty())
-            advance(ticks = 2)
+            advance(ticks = 3)
             assertTrue(effects.isEmpty())
             advance()
-            assertEquals(listOf(castTick + 3 to 734), effects)
+            assertEquals(listOf(castTick + 4 to 734), effects)
             assertEquals(1, sounds.size)
         }
 
@@ -144,20 +144,22 @@ class EnergyTransferTest {
             target.withProtectedAccess { delay(10) }
             advance()
             assertTrue(player.ui.containsModal(interfaces.chatmenu))
-            advance(ticks = 2)
+            advance(ticks = 3)
             assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
             assertTrue(target.isDelayed)
             assertTrue(player.ui.containsModal(interfaces.chatmenu))
         }
 
     @Test
-    fun GameTestState.`separate transfers keep their own three tick arrival`() =
+    fun GameTestState.`separate transfers keep their own four tick arrival`() =
         runTransferTest { deps ->
             val target = recipient()
             cast(deps, target)
             advance()
             player.setVarp(varps.sa_energy, constants.sa_max_energy)
             cast(deps, target)
+            assertEquals(100, target.vars[varps.sa_energy])
+            advance()
             assertEquals(100, target.vars[varps.sa_energy])
             advance()
             assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
@@ -185,7 +187,7 @@ class EnergyTransferTest {
                     target.setCurrentLevel(stats.hitpoints, 0)
                     null
                 }
-            advance(ticks = 3)
+            advance(ticks = 4)
             assertEquals(100, target.vars[varps.sa_energy])
             assertTrue(target.runEnergy < constants.run_max_energy)
             if (replacement != null) assertEquals(100, replacement.vars[varps.sa_energy])
@@ -270,7 +272,7 @@ class EnergyTransferTest {
             assertEquals(100, target.vars[varps.sa_energy])
             assertTrue(target.runEnergy < constants.run_max_energy)
             if (failure <= 1) assertMessageSent("You need more hitpoints to cast this spell.")
-            advance(ticks = 3)
+            advance(ticks = 4)
             assertEquals(100, target.vars[varps.sa_energy])
             assertTrue(target.runEnergy < constants.run_max_energy)
             assertTrue(sounds.isEmpty())
@@ -288,10 +290,10 @@ class EnergyTransferTest {
             assertEquals(100, target.vars[varps.sa_energy])
             assertEquals(3, player.inv.count(energy_transfer_test_objs.astral_rune))
             assertEquals(xp, player.statMap.getXP(stats.magic))
-            advance(ticks = 2)
+            advance(ticks = 3)
             assertEquals(constants.sa_max_energy, target.vars[varps.sa_energy])
             target.setVarp(varps.sa_energy, 100)
-            advance(ticks = 3)
+            advance(ticks = 4)
             assertEquals(100, target.vars[varps.sa_energy])
         }
 
@@ -320,7 +322,7 @@ class EnergyTransferTest {
             cast(deps, target)
             assertEquals(if (singlePlayer == 2) 89 else 99, player.hitpoints)
             assertEquals(100, target.vars[varps.sa_energy])
-            advance(ticks = 3)
+            advance(ticks = 4)
             assertEquals(
                 if (singlePlayer == 2) constants.sa_max_energy else 100,
                 target.vars[varps.sa_energy],

@@ -86,7 +86,7 @@ constructor(
 }
 
 private const val HITPOINT_COST = 10
-private const val TRANSFER_DELAY = 3
+private const val TRANSFER_DELAY = 4
 private var Player.specialEnergy by intVarp(varps.sa_energy)
 
 object energy_transfer_components : ComponentReferences() {
