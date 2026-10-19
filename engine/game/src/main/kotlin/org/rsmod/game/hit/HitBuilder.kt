@@ -23,6 +23,7 @@ public class HitBuilder(
 ) {
     public var isThrall: Boolean = false
     public var damageRoll: DamageRoll? = null
+    public var attackId: Long? = null
 
     public fun isRighthandObj(type: ObjType): Boolean = type.id == righthandType
 
@@ -38,6 +39,7 @@ public class HitBuilder(
             secondaryObj = secondaryType,
             isThrall = isThrall,
             damageRoll = damageRoll,
+            attackId = attackId,
         )
     }
 

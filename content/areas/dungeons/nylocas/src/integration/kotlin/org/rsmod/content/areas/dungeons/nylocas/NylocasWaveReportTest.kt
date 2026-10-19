@@ -50,7 +50,7 @@ class NylocasWaveReportTest {
                 received +=
                     client
                         .filterIsInstance<MessageGame>()
-                        .filter { it.message.startsWith("LNW2 ") }
+                        .filter { it.message.startsWith("LNW3 ") }
                         .map { it.message.split(" ") }
             }
             fun reports() = received
@@ -120,7 +120,7 @@ class NylocasWaveReportTest {
                 reports +=
                     client
                         .filterIsInstance<MessageGame>()
-                        .filter { it.message.startsWith("LNW2 ") }
+                        .filter { it.message.startsWith("LNW3 ") }
                         .map { it.message.split(" ") }
             }
             val room = createRegion(NylocasRoom.template)
@@ -143,7 +143,7 @@ class NylocasWaveReportTest {
         }
 
     @Test
-    fun `kills ignore misses count individual damage splats and retain lethal style and thrall credit`() {
+    fun `kills ignore misses distinguish attacks and retain lethal style and thrall credit`() {
         val stats = NylocasWaveStats()
         val small = NylocasWaveStats.Damage(NylocasSize.Small)
         stats.impact(small, NylocasStyle.Melee, 0, 8, false, 1)
@@ -162,15 +162,15 @@ class NylocasWaveReportTest {
     }
 
     @Test
-    fun `split distributions change at waves 21 and 31 and reset for a fresh report`() {
+    fun `split distributions change at waves 21 and 29 and reset for a fresh report`() {
         val stats = NylocasWaveStats()
         stats.wave = 20
         stats.split(NylocasStyle.Melee)
         stats.wave = 21
         stats.split(NylocasStyle.Ranged)
-        stats.wave = 30
+        stats.wave = 28
         stats.split(NylocasStyle.Magic)
-        stats.wave = 31
+        stats.wave = 29
         stats.split(NylocasStyle.Melee)
         stats.split(NylocasStyle.Magic)
         assertEquals(listOf(1, 0, 0, 0, 1, 1, 1, 0, 1), fields(stats).takeLast(9))
@@ -245,7 +245,7 @@ class NylocasWaveReportTest {
         stats.impact(NylocasWaveStats.Damage(NylocasSize.Small), NylocasStyle.Melee, 8, 0, false, 5)
         assertEquals(
             listOf(1L, 0L, 500000L, 1L, 1L, 1000000L, 1L, 1L, 533333L, 1L, 0L, 0L, 2L),
-            stats.payload(0, "cleanup").split(" ").drop(25).map(String::toLong),
+            stats.payload(0, "cleanup").split(" ").drop(25).take(13).map(String::toLong),
         )
     }
 
@@ -258,6 +258,92 @@ class NylocasWaveReportTest {
         assertEquals(1.0, DamageRoll(8..8).chanceAtLeast(8))
         assertEquals(0.0, DamageRoll(0..0).chanceAtLeast(8))
         assertEquals(1.0, DamageRoll(0..0, true).chanceAtLeast(1))
+    }
+
+    @Test
+    fun `one attack can kill with multiple splats across ticks but separate attacks cannot combine`() {
+        val stats = NylocasWaveStats()
+        val attack = NylocasAttack(mutableListOf(DamageRoll(1..5), DamageRoll(1..5)))
+        val first = NylocasWaveStats.Damage(NylocasSize.Small)
+        stats.impact(first, NylocasStyle.Melee, 4, 4, false, 1, attack = attack)
+        stats.impact(first, NylocasStyle.Melee, 4, 0, false, 2, attack = attack)
+        val second = NylocasWaveStats.Damage(NylocasSize.Small)
+        stats.impact(second, NylocasStyle.Melee, 4, 4, false, 3, attack = attack)
+        stats.impact(
+            second,
+            NylocasStyle.Melee,
+            4,
+            0,
+            false,
+            3,
+            attack = NylocasAttack(mutableListOf(DamageRoll(4..4))),
+        )
+        assertEquals(listOf(2, 1), fields(stats).subList(5, 7))
+        val luck = stats.payload(0, "complete").split(" ").drop(25).map(String::toLong)
+        assertEquals(listOf(2L, 1L, 480000L), luck.take(3))
+        assertEquals(760000L, luck.last())
+    }
+
+    @Test
+    fun `attack probability sums independent splats before conditioning on damage`() {
+        assertEquals(
+            0.24,
+            NylocasAttack(mutableListOf(DamageRoll(1..5), DamageRoll(1..5))).chanceAtLeast(8)!!,
+            1e-12,
+        )
+        assertEquals(
+            1.0 / 3,
+            NylocasAttack(mutableListOf(DamageRoll(0..1), DamageRoll(0..1))).chanceAtLeast(2)!!,
+            1e-12,
+        )
+        assertEquals(
+            1.0,
+            NylocasAttack(mutableListOf(DamageRoll(0..0, true), DamageRoll(0..0, true)))
+                .chanceAtLeast(2)!!,
+            1e-12,
+        )
+        assertEquals(0.0, NylocasAttack(mutableListOf(DamageRoll(0..0))).chanceAtLeast(8))
+        assertEquals(
+            0.5,
+            NylocasAttack(mutableListOf(DamageRoll(0..15, true))).chanceAtLeast(8)!!,
+            1e-12,
+        )
+    }
+
+    @Test
+    fun `luck percentile uses each attack probability and splits ties equally`() {
+        val stats = NylocasWaveStats()
+        val first = NylocasWaveStats.Damage(NylocasSize.Small)
+        val second = NylocasWaveStats.Damage(NylocasSize.Small)
+        val low = NylocasAttack(mutableListOf(DamageRoll(1..10)))
+        val high = NylocasAttack(mutableListOf(DamageRoll(1..10)))
+        stats.impact(first, NylocasStyle.Melee, 1, 9, false, 1, attack = low)
+        stats.impact(second, NylocasStyle.Melee, 1, 1, false, 1, attack = high)
+        assertEquals("45000", stats.payload(0, "waves").split(" ").last())
+        stats.impact(first, NylocasStyle.Melee, 9, 0, false, 2, attack = low)
+        assertEquals("500000", stats.payload(0, "waves").split(" ").last())
+        stats.impact(second, NylocasStyle.Melee, 1, 0, false, 2, attack = high)
+        assertEquals("955000", stats.payload(0, "waves").split(" ").last())
+        val certain = NylocasWaveStats()
+        certain.impact(
+            NylocasWaveStats.Damage(NylocasSize.Small),
+            NylocasStyle.Melee,
+            1,
+            1,
+            false,
+            1,
+            DamageRoll(1..1),
+        )
+        certain.impact(
+            NylocasWaveStats.Damage(NylocasSize.Small),
+            NylocasStyle.Melee,
+            1,
+            0,
+            false,
+            1,
+            DamageRoll(1..1),
+        )
+        assertEquals("500000", certain.payload(0, "waves").split(" ").last())
     }
 
     private fun overkilled(stats: NylocasWaveStats, size: NylocasSize): NylocasWaveStats.Damage =

@@ -3,6 +3,7 @@ package org.rsmod.content.areas.dungeons.nylocas
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.util.UUID
+import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.commons.PlayerDamageRoll
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.npc.events.NpcHitEvents
@@ -21,6 +22,8 @@ class NylocasWaveReport
 constructor(private val raid: TheatreRaid, private val clock: MapClock) {
     private val rooms = mutableMapOf<Int, Room>()
     private val bodies = mutableMapOf<Npc, Body>()
+    private val launchedAttacks = mutableMapOf<Int, Long>()
+    private var nextAttackId = 0L
 
     fun register(context: ScriptContext) =
         with(context) {
@@ -28,9 +31,12 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                 bodies.entries.removeAll { it.value.region.uid == region.uid }
                 rooms[region.uid] = Room(region, clock.cycle)
             }
+            onEvent<PlayerAttackTarget> { launchedAttacks[player.uid.packed] = ++nextAttackId }
             onEvent<PlayerDamageRoll> {
                 val body = bodies[target] ?: return@onEvent
-                if (damage > 0) body.rolls += Rolled(source.uid.packed, damage, distribution)
+                val attackId = launchedAttacks[source.uid.packed] ?: ++nextAttackId
+                body.attacks.getOrPut(attackId) { NylocasAttack() }.rolls += distribution
+                body.rolls += Rolled(source.uid.packed, damage, distribution, attackId)
             }
             for (type in 8342..8353) {
                 onEvent<NpcHitEvents.Modify>(type) {
@@ -39,7 +45,17 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                         body.rolls.indexOfFirst {
                             it.source == hit.sourceUid && it.damage == hit.damage
                         }
-                    if (index >= 0) hit.damageRoll = body.rolls.removeAt(index).distribution
+                    if (hit.isThrall) return@onEvent
+                    if (index >= 0) {
+                        val roll = body.rolls.removeAt(index)
+                        hit.damageRoll = roll.distribution
+                        hit.attackId = roll.attackId
+                    } else {
+                        val attackId = launchedAttacks[hit.sourceUid] ?: ++nextAttackId
+                        hit.attackId = attackId
+                        val attack = body.attacks.getOrPut(attackId) { NylocasAttack() }
+                        if (hit.damage > 0) attack.measured = false
+                    }
                 }
             }
             onEvent<NpcStateEvents.Delete> {
@@ -62,10 +78,12 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                     hit.isThrall,
                     clock.cycle,
                     hit.damageRoll,
+                    body.attacks[hit.attackId],
                 )
             }
             onEvent<GameLifecycle.EndCycle> {
                 bodies.values.forEach { it.rolls.clear() }
+                launchedAttacks.clear()
                 rooms.values.removeAll { it.region.slot == Region.INVALID_SLOT }
                 bodies.entries.removeAll { it.value.region.slot == Region.INVALID_SLOT }
                 for (room in rooms.values) {
@@ -79,7 +97,7 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                         }
                     val payload = room.stats.payload(population, status)
                     if (payload != room.lastPayload) {
-                        raid.sendWaveReport(room.region, "LNW2 ${room.id} $payload")
+                        raid.sendWaveReport(room.region, "LNW3 ${room.id} $payload")
                         room.lastPayload = payload
                     }
                 }
@@ -108,10 +126,16 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
         )
     }
 
-    private class Rolled(val source: Int, val damage: Int, val distribution: DamageRoll)
+    private class Rolled(
+        val source: Int,
+        val damage: Int,
+        val distribution: DamageRoll,
+        val attackId: Long,
+    )
 
     private class Body(val region: Region, val damage: NylocasWaveStats.Damage) {
         val rolls = mutableListOf<Rolled>()
+        val attacks = mutableMapOf<Long, NylocasAttack>()
     }
 
     private class Room(val region: Region, val startCycle: Int) {
@@ -136,7 +160,8 @@ class NylocasWaveStats {
     private val overkills = IntArray(3)
     private val splits = Array(3) { IntArray(3) }
     // Pre/post cap, then small/big. Cleanup belongs to post-cap.
-    private val luck = Array(4) { Luck() }
+    private val luck = Array(4) { NylocasLuck() }
+    private val wholeLuck = NylocasLuck()
     private var unmeasured = 0
     private var removalCycle = -1
     private var populationWithoutOverkillDelta = 0
@@ -149,6 +174,7 @@ class NylocasWaveStats {
         thrall: Boolean,
         cycle: Int,
         distribution: DamageRoll? = null,
+        attack: NylocasAttack? = null,
     ) {
         if (body.killCycle != null) {
             // Only an extra splat on the lethal tick advances the death queue by one tick.
@@ -159,28 +185,38 @@ class NylocasWaveStats {
             return
         }
         if (damage <= 0) return
-        if (body.positiveHits == 0) {
-            if (distribution != null && !thrall) {
-                val group = luck[(if (wave >= 21) 2 else 0) + body.size.ordinal]
-                group.attempts++
-                group.expected += distribution.chanceAtLeast(hp + damage)
-                if (hp == 0) group.actual++
+        val originatingAttack =
+            attack ?: NylocasAttack(distribution?.let { mutableListOf(it) } ?: mutableListOf())
+        if (body.firstAttack == null) {
+            body.firstAttack = originatingAttack
+            val probability = if (thrall) null else originatingAttack.chanceAtLeast(hp + damage)
+            if (probability != null) {
+                val group = (if (wave >= 21) 2 else 0) + body.size.ordinal
+                body.luckGroup = group
+                luck[group].attempt(probability)
+                wholeLuck.attempt(probability)
             } else {
                 unmeasured++
             }
         }
-        body.positiveHits++
+        if (body.firstAttack !== originatingAttack) body.multipleAttacks = true
         if (hp != 0) return
         body.killCycle = cycle
         body.deathStyle = style
         kills[body.size.ordinal]++
         styleKills[style.ordinal]++
-        if (body.positiveHits == 1) oneShots[body.size.ordinal]++
+        if (!body.multipleAttacks) {
+            oneShots[body.size.ordinal]++
+            body.luckGroup?.let {
+                luck[it].actual++
+                wholeLuck.actual++
+            }
+        }
         if (thrall) thralls++
     }
 
     fun split(style: NylocasStyle) {
-        val phase = if (wave >= 31) 2 else if (wave >= 21) 1 else 0
+        val phase = if (wave >= 29) 2 else if (wave >= 21) 1 else 0
         splits[phase][style.ordinal]++
     }
 
@@ -214,17 +250,17 @@ class NylocasWaveStats {
                         kotlin.math.round(it.expected * 1000000).toLong(),
                     )
                 } +
-                unmeasured)
+                listOf(
+                    unmeasured,
+                    if (wholeLuck.attempts == 0) 0L
+                    else kotlin.math.round(wholeLuck.percentile() * 1000000).toLong(),
+                ))
             .joinToString(" ")
 
-    private class Luck {
-        var attempts = 0
-        var actual = 0
-        var expected = 0.0
-    }
-
     class Damage(val size: NylocasSize) {
-        var positiveHits = 0
+        var firstAttack: NylocasAttack? = null
+        var multipleAttacks = false
+        var luckGroup: Int? = null
         var killCycle: Int? = null
         var deathStyle: NylocasStyle? = null
         var overkilled = false

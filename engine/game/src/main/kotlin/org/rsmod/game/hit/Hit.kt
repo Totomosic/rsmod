@@ -19,6 +19,8 @@ public data class Hit(
     /** Keeps thrall attribution while the source remains its owner for kill credit. */
     public val isThrall: Boolean = false,
     public val damageRoll: DamageRoll? = null,
+    /** Identifies splats from one attack, independent of their impact tick or source. */
+    public val attackId: Long? = null,
 ) {
     public val damage: Int
         get() = hitmark.damage

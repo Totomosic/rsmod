@@ -240,7 +240,7 @@ class NylocasDamageTest {
             eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
                 client
                     .filterIsInstance<MessageGame>()
-                    .lastOrNull { it.message.startsWith("LNW1 ") }
+                    .lastOrNull { it.message.startsWith("LNW3 ") }
                     ?.let { latestReport = it.message.split(" ") }
             }
             eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
@@ -288,6 +288,49 @@ class NylocasDamageTest {
             assertEquals(if (overkill) 8 else 12, nextWaveCycle)
             assertEquals(true, removedBeforeNextWave)
             assertEquals(if (overkill) "1" else "0", checkNotNull(latestReport)[6])
+        }
+
+    @ParameterizedTest
+    @CsvSource("false", "true")
+    fun `report counts one attack kills from both scythe and sulphur blade splats`(
+        sulphur: Boolean,
+        state: GameTestState,
+    ) =
+        state.runDamageTest(TheatreRaid::class) { deps, room ->
+            deps.raid.start(player, TheatreRaidOptions(nyloMaxHit = NyloMaxHit.AllWeapons))
+            deps.raid.beginRoom(room)
+            val size = if (sulphur) NylocasSize.Small else NylocasSize.Big
+            val target = spawnNylo(deps, room, NylocasStyle.Melee, size)
+            player.righthand =
+                InvObj(if (sulphur) special_weapon_objs.sulphur_blades else objs.scythe_of_vitur)
+            val attack = meleeAttack().copy(weapon = player.righthand)
+            val maxHit =
+                deps.attacks.calculateMeleeMaxHit(player, target, attack.type, attack.style, 1.0)
+            val hp = (if (sulphur) maxHit else maxHit + maxHit / 2) - 1
+            target.hitpoints = hp
+            target.baseHitpointsLvl = hp
+            var report: List<String>? = null
+            eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
+                client
+                    .filterIsInstance<MessageGame>()
+                    .lastOrNull { it.message.startsWith("LNW3 ") }
+                    ?.let { report = it.message.split(" ") }
+            }
+            random.next = 0
+            player.withProtectedAccess { deps.combat.attack(this, target, attack) }
+            val hits = target.pendingHits()
+            assertEquals(2, hits.size)
+            assertTrue(hits.first().damage < hp)
+            assertEquals(hp + 1, hits.sumOf { it.damage })
+            assertNotNull(hits.first().attackId)
+            assertEquals(hits.first().attackId, hits.last().attackId)
+            advance(ticks = 3)
+            val fields = checkNotNull(report)
+            val offset = if (sulphur) 8 else 10
+            assertEquals(listOf("1", "1"), fields.subList(offset, offset + 2))
+            val luckOffset = if (sulphur) 27 else 30
+            assertEquals(listOf("1", "1", "1000000"), fields.subList(luckOffset, luckOffset + 3))
+            assertEquals("500000", fields.last())
         }
 
     @Test
