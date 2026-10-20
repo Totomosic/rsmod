@@ -153,6 +153,9 @@ constructor(
     fun teamSize(region: Region): Int =
         checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.teamSize
 
+    internal fun reportMembers(region: Region): List<Player> =
+        raids[region.uid]?.members?.toList().orEmpty()
+
     fun options(region: Region): TheatreRaidOptions =
         checkNotNull(raids[region.uid]) { "Raid has not started: ${region.uid}" }.options
 

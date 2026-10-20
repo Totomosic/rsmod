@@ -1,6 +1,7 @@
 package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
+import java.util.Base64
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -50,7 +51,7 @@ class NylocasWaveReportTest {
                 received +=
                     client
                         .filterIsInstance<MessageGame>()
-                        .filter { it.message.startsWith("LNW3 ") }
+                        .filter { it.message.startsWith("LNW4 ") }
                         .map { it.message.split(" ") }
             }
             fun reports() = received
@@ -100,7 +101,7 @@ class NylocasWaveReportTest {
             advance()
             assertNotEquals(id, reports().last()[1])
             assertEquals("starting", reports().last()[2])
-            assertTrue(reports().last().drop(3).all { it == "0" })
+            assertTrue(reports().last().drop(3).take(38).all { it == "0" })
         }
 
     @Test
@@ -120,11 +121,14 @@ class NylocasWaveReportTest {
                 reports +=
                     client
                         .filterIsInstance<MessageGame>()
-                        .filter { it.message.startsWith("LNW3 ") }
+                        .filter { it.message.startsWith("LNW4 ") }
                         .map { it.message.split(" ") }
             }
             val room = createRegion(NylocasRoom.template)
             player.telejump(room.normal[CoordGrid(3295, 4256)])
+            player.displayName = "First Raider"
+            val guest = registerPlayer(coords = player.coords)
+            guest.displayName = "Idle Raider"
             advance()
             deps.raid.start(player, TheatreRaidOptions(startingWave = 31))
             player.opLoc1(barrier.copy(coords = room.normal[barrier.coords]))
@@ -140,6 +144,12 @@ class NylocasWaveReportTest {
             assertEquals("500000", reports.last()[35]) // Eight lethal rolls out of sixteen.
             assertEquals(if (rolled >= 8) "1" else "0", reports.last()[34])
             assertEquals("0", reports.last()[39]) // Distribution was measured, not excluded.
+            val report = reports.last()
+            assertEquals("2", report[41])
+            assertEquals("First Raider", decodeName(report[42]))
+            assertEquals("Idle Raider", decodeName(report[57]))
+            assertEquals(report.subList(27, 41), report.subList(43, 57))
+            assertTrue(report.subList(58, 72).all { it == "0" })
         }
 
     @Test
@@ -345,6 +355,69 @@ class NylocasWaveReportTest {
         )
         assertEquals("500000", certain.payload(0, "waves").split(" ").last())
     }
+
+    @Test
+    fun `player luck belongs to the first damaging attacker even when another player finishes`() {
+        val stats = NylocasWaveStats()
+        stats.member(10, "First Raider")
+        stats.member(20, "Second")
+        stats.member(30, "Idle")
+        val shared = NylocasWaveStats.Damage(NylocasSize.Small)
+        stats.impact(
+            shared,
+            NylocasStyle.Melee,
+            0,
+            8,
+            false,
+            1,
+            DamageRoll(0..15, true),
+            source = 20,
+        )
+        stats.impact(
+            shared,
+            NylocasStyle.Melee,
+            4,
+            4,
+            false,
+            2,
+            DamageRoll(0..15, true),
+            source = 10,
+        )
+        stats.impact(shared, NylocasStyle.Melee, 4, 0, false, 3, DamageRoll(4..4), source = 20)
+        stats.wave = 21
+        val attack = NylocasAttack(mutableListOf(DamageRoll(1..5), DamageRoll(1..5)))
+        val big = NylocasWaveStats.Damage(NylocasSize.Big)
+        stats.impact(big, NylocasStyle.Magic, 4, 4, false, 4, attack = attack, source = 20)
+        stats.impact(big, NylocasStyle.Magic, 4, 0, false, 5, attack = attack, source = 20)
+        stats.impact(big, NylocasStyle.Magic, 1, 0, false, 5, source = 10)
+        stats.impact(
+            NylocasWaveStats.Damage(NylocasSize.Small),
+            NylocasStyle.Melee,
+            8,
+            0,
+            true,
+            6,
+            source = 20,
+        )
+        val payload = stats.playerPayload().split(" ")
+        assertEquals("3", payload[0])
+        assertEquals(
+            listOf("First Raider", "Second", "Idle"),
+            listOf(1, 16, 31).map { decodeName(payload[it]) },
+        )
+        val first = payload.subList(2, 16).map(String::toLong)
+        val second = payload.subList(17, 31).map(String::toLong)
+        assertEquals(listOf(1L, 0L, 500000L), first.take(3))
+        assertEquals(250000L, first[13])
+        assertEquals(listOf(1L, 1L, 240000L), second.subList(9, 12))
+        assertEquals(1L, second[12]) // Thrall-first kill is excluded for its owner.
+        assertEquals(880000L, second[13])
+        assertTrue(payload.subList(32, 46).all { it == "0" })
+        assertEquals("0", NylocasWaveStats().playerPayload())
+    }
+
+    private fun decodeName(value: String): String =
+        String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
 
     private fun overkilled(stats: NylocasWaveStats, size: NylocasSize): NylocasWaveStats.Damage =
         NylocasWaveStats.Damage(size).also {

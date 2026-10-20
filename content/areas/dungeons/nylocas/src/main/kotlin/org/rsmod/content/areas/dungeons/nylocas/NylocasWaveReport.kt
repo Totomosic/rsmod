@@ -2,6 +2,7 @@ package org.rsmod.content.areas.dungeons.nylocas
 
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import java.util.Base64
 import java.util.UUID
 import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.commons.PlayerDamageRoll
@@ -10,6 +11,7 @@ import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.script.onEvent
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcStateEvents
 import org.rsmod.game.hit.DamageRoll
 import org.rsmod.game.region.Region
@@ -19,7 +21,11 @@ import org.rsmod.plugin.scripts.ScriptContext
 @Singleton
 class NylocasWaveReport
 @Inject
-constructor(private val raid: TheatreRaid, private val clock: MapClock) {
+constructor(
+    private val raid: TheatreRaid,
+    private val clock: MapClock,
+    private val players: PlayerList,
+) {
     private val rooms = mutableMapOf<Int, Room>()
     private val bodies = mutableMapOf<Npc, Body>()
     private val launchedAttacks = mutableMapOf<Int, Long>()
@@ -29,7 +35,14 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
         with(context) {
             onEvent<NylocasRoomStart> {
                 bodies.entries.removeAll { it.value.region.uid == region.uid }
-                rooms[region.uid] = Room(region, clock.cycle)
+                val room = Room(region, clock.cycle)
+                for (member in raid.reportMembers(region)) {
+                    room.stats.member(
+                        member.uid.packed,
+                        member.displayName.ifBlank { member.username },
+                    )
+                }
+                rooms[region.uid] = room
             }
             onEvent<PlayerAttackTarget> { launchedAttacks[player.uid.packed] = ++nextAttackId }
             onEvent<PlayerDamageRoll> {
@@ -79,6 +92,7 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                     clock.cycle,
                     hit.damageRoll,
                     body.attacks[hit.attackId],
+                    if (hit.isFromPlayer) hit.resolvePlayerSource(players)?.uid?.packed else null,
                 )
             }
             onEvent<GameLifecycle.EndCycle> {
@@ -95,9 +109,10 @@ constructor(private val raid: TheatreRaid, private val clock: MapClock) {
                             population > 0 -> "cleanup"
                             else -> "complete"
                         }
-                    val payload = room.stats.payload(population, status)
+                    val payload =
+                        room.stats.payload(population, status) + " " + room.stats.playerPayload()
                     if (payload != room.lastPayload) {
-                        raid.sendWaveReport(room.region, "LNW3 ${room.id} $payload")
+                        raid.sendWaveReport(room.region, "LNW4 ${room.id} $payload")
                         room.lastPayload = payload
                     }
                 }
@@ -163,8 +178,13 @@ class NylocasWaveStats {
     private val luck = Array(4) { NylocasLuck() }
     private val wholeLuck = NylocasLuck()
     private var unmeasured = 0
+    private val players = linkedMapOf<Int, PlayerLuck>()
     private var removalCycle = -1
     private var populationWithoutOverkillDelta = 0
+
+    fun member(source: Int, name: String) {
+        players.putIfAbsent(source, PlayerLuck(name))
+    }
 
     fun impact(
         body: Damage,
@@ -175,6 +195,7 @@ class NylocasWaveStats {
         cycle: Int,
         distribution: DamageRoll? = null,
         attack: NylocasAttack? = null,
+        source: Int? = null,
     ) {
         if (body.killCycle != null) {
             // Only an extra splat on the lethal tick advances the death queue by one tick.
@@ -189,14 +210,19 @@ class NylocasWaveStats {
             attack ?: NylocasAttack(distribution?.let { mutableListOf(it) } ?: mutableListOf())
         if (body.firstAttack == null) {
             body.firstAttack = originatingAttack
+            body.luckOwner = source
+            val player = players[source]
             val probability = if (thrall) null else originatingAttack.chanceAtLeast(hp + damage)
             if (probability != null) {
                 val group = (if (wave >= 21) 2 else 0) + body.size.ordinal
                 body.luckGroup = group
                 luck[group].attempt(probability)
                 wholeLuck.attempt(probability)
+                player?.groups?.get(group)?.attempt(probability)
+                player?.whole?.attempt(probability)
             } else {
                 unmeasured++
+                if (player != null) player.unmeasured++
             }
         }
         if (body.firstAttack !== originatingAttack) body.multipleAttacks = true
@@ -210,6 +236,10 @@ class NylocasWaveStats {
             body.luckGroup?.let {
                 luck[it].actual++
                 wholeLuck.actual++
+                players[body.luckOwner]?.let { player ->
+                    player.groups[it].actual++
+                    player.whole.actual++
+                }
             }
         }
         if (thrall) thralls++
@@ -257,10 +287,45 @@ class NylocasWaveStats {
                 ))
             .joinToString(" ")
 
+    /** LNW4 appends a count, then a base64url UTF-8 name and 14 luck counters per member. */
+    fun playerPayload(): String =
+        (listOf(players.size.toString()) +
+                players.values.flatMap { player ->
+                    listOf(
+                        Base64.getUrlEncoder()
+                            .withoutPadding()
+                            .encodeToString(player.name.toByteArray(Charsets.UTF_8))
+                    ) +
+                        player.groups.flatMap {
+                            listOf(
+                                it.attempts.toString(),
+                                it.actual.toString(),
+                                kotlin.math.round(it.expected * 1000000).toLong().toString(),
+                            )
+                        } +
+                        listOf(
+                            player.unmeasured.toString(),
+                            if (player.whole.attempts == 0) "0"
+                            else
+                                kotlin.math
+                                    .round(player.whole.percentile() * 1000000)
+                                    .toLong()
+                                    .toString(),
+                        )
+                })
+            .joinToString(" ")
+
+    private class PlayerLuck(val name: String) {
+        val groups = Array(4) { NylocasLuck() }
+        val whole = NylocasLuck()
+        var unmeasured = 0
+    }
+
     class Damage(val size: NylocasSize) {
         var firstAttack: NylocasAttack? = null
         var multipleAttacks = false
         var luckGroup: Int? = null
+        var luckOwner: Int? = null
         var killCycle: Int? = null
         var deathStyle: NylocasStyle? = null
         var overkilled = false
