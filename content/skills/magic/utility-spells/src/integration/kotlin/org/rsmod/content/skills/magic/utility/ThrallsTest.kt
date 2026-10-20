@@ -515,6 +515,77 @@ class ThrallsTest {
             assertTrue(summoned.distanceTo(distant) <= 6)
         }
 
+    @ParameterizedTest
+    @CsvSource(
+        "false, west, 6",
+        "false, west, 7",
+        "false, south, 6",
+        "false, south, 7",
+        "false, east, 6",
+        "false, east, 7",
+        "false, north, 6",
+        "false, north, 7",
+        "true, west, 6",
+        "true, west, 7",
+        "true, south, 6",
+        "true, south, 7",
+        "true, east, 6",
+        "true, east, 7",
+        "true, north, 6",
+        "true, north, 7",
+    )
+    fun `projectile thralls check the big target footprint before launching or chasing`(
+        skeleton: Boolean,
+        direction: String,
+        distance: Int,
+        state: GameTestState,
+    ) =
+        state.runThrallTest { deps ->
+            cast(if (skeleton) thrall_components.skeleton else thrall_components.ghost)
+            // Make the attack ready before introducing a target, so cooldown cannot
+            // conceal an out-of-range launch. Observe launch, before projectile travel.
+            advance(ticks = 5)
+            val summoned = thrall(deps)
+            summoned.telejump(player.coords)
+            summoned.abortRoute()
+            val origin = summoned.coords
+            val destination =
+                when (direction) {
+                    "west" -> origin.translateX(-distance - 1)
+                    "south" -> origin.translateZ(-distance - 1)
+                    "east" -> origin.translateX(distance)
+                    "north" -> origin.translateZ(distance)
+                    else -> error(direction)
+                }
+            val bigType =
+                npcTypeFactory.create {
+                    name = "Big thrall range target"
+                    size = 2
+                    hitpoints = 1000
+                    op[1] = "Attack"
+                    defaultMode = NpcMode.None
+                }
+            val target = spawnNpc(destination, bigType)
+            for (x in -16..16 step 8) for (z in -16..16 step 8) {
+                allocZoneCollision(origin.translate(x, z))
+            }
+            var launches = 0
+            eventBus.subscribeKeyed(PlayerAttackCheck::class.java, target.id.toLong()) {
+                if (isThrall && this.target === target) launches++
+            }
+            eventBus.publish(PlayerAttackTarget(player, target))
+            advance()
+            assertEquals(origin, summoned.coords)
+            assertEquals(if (distance == 6) 1 else 0, launches)
+            if (distance == 7) {
+                // Out-of-range targets are chased on a later movement phase, rather
+                // than being shot from the original position.
+                advance(ticks = 2)
+                assertTrue(summoned.coords != origin)
+                assertTrue(launches > 0)
+            }
+        }
+
     @Test
     fun GameTestState.`summoned thralls cannot take damage`() = runThrallTest { deps ->
         cast()
