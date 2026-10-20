@@ -3,7 +3,6 @@ package org.rsmod.api.combat
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.PlayerAttackTarget
-import org.rsmod.api.combat.commons.PlayerSpecialAttackCheck
 import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.combat.manager.RangedAmmoManager
 import org.rsmod.api.combat.player.activateMagicSpecial
@@ -62,18 +61,6 @@ constructor(
         if (manager.isAttackDelayed(player)) {
             manager.continueCombat(player, npc)
             return
-        }
-
-        // Large NPCs can be in melee reach before an encounter permits a special to hit them.
-        // Keep the special armed until eligible, before applying its delay or spending energy.
-        val specialWeapon = attack.weapon
-        if (specialAttackType == SpecialAttackType.Weapon && specialWeapon != null) {
-            val check = PlayerSpecialAttackCheck(player, npc, specialWeapon)
-            eventBus.publish(check)
-            if (!check.allowed) {
-                manager.continueCombat(player, npc)
-                return
-            }
         }
 
         // Set the next attack clock before executing any special attack, ensuring all attacks

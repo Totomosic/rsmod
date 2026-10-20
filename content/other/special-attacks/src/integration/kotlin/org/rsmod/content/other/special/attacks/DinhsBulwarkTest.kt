@@ -158,7 +158,7 @@ class DinhsBulwarkTest {
         }
 
     @Test
-    fun GameTestState.`primary cannot be hit without line of sight from the player`() =
+    fun GameTestState.`primary ignores line of sight and still hits visible sweep targets`() =
         runBulwarkTest { deps ->
             val primary = spawnNpc(center.translateZ(1), dummy)
             markMulti(deps, listOf(center, primary.coords))
@@ -168,11 +168,23 @@ class DinhsBulwarkTest {
                 primary.coords.level,
                 CollisionFlag.WALL_SOUTH_PROJ_BLOCKER,
             )
-            val before = player.statMap.getXP(stats.attack)
+            val nearby = spawnNpc(center.translateX(2), dummy)
+            markMulti(deps, listOf(nearby.coords))
+            queueHits(7, 6, 5)
             useSpecial(deps, primary)
+            assertEquals(listOf(7 to 1, 6 to 1), primary.pendingHits())
+            assertEquals(listOf(5 to 1), nearby.pendingHits())
+            advance()
+            assertEquals(187, primary.hitpoints)
+            assertEquals(195, nearby.hitpoints)
+        }
+
+    @Test
+    fun GameTestState.`primary on another level does not request special energy or queue hits`() =
+        runBulwarkTest { deps ->
+            val primary = spawnNpc(CoordGrid(center.x, center.z + 1, center.level + 1), dummy)
+            useSpecial(deps, primary, spendEnergy = false)
             assertTrue(primary.pendingHits().isEmpty())
-            assertEquals(100, primary.attackLvl)
-            assertEquals(before, player.statMap.getXP(stats.attack))
         }
 
     @Test
@@ -355,6 +367,7 @@ class DinhsBulwarkTest {
         deps: Dependencies,
         target: PathingEntity,
         weapon: ObjType = special_objs.dinhs_bulwark,
+        spendEnergy: Boolean = true,
     ) {
         player.righthand = InvObj(weapon)
         val special = checkNotNull(deps.registry[InvObj(weapon)]) as SpecialAttack.Melee
@@ -365,7 +378,9 @@ class DinhsBulwarkTest {
                 MeleeAttackStyle.Accurate,
                 CombatStance.Stance1,
             )
-        player.withProtectedAccess { assertTrue(special.attack(this, target, attack)) }
+        player.withProtectedAccess {
+            assertEquals(spendEnergy, special.attack(this, target, attack))
+        }
     }
 
     private fun Npc.pendingHits(): List<Pair<Int, Int>> = buildList {

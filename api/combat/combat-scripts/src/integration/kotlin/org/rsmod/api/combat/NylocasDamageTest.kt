@@ -44,6 +44,7 @@ import org.rsmod.api.player.righthand
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.npc.NpcRepository
+import org.rsmod.api.route.RayCastValidator
 import org.rsmod.api.specials.SpecialAttack
 import org.rsmod.api.specials.SpecialAttackManager
 import org.rsmod.api.specials.SpecialAttackRegistry
@@ -116,12 +117,14 @@ import org.rsmod.game.type.obj.ObjType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.routefinder.collision.CollisionFlagMap
+import org.rsmod.routefinder.flag.CollisionFlag
 
 class NylocasDamageTest {
     @ParameterizedTest
-    @CsvSource("false", "true")
-    fun `wave 25 west fighting big receives the bulwark special as it enters`(
+    @CsvSource("false, false", "false, true", "true, false", "true, true")
+    fun `bulwark hits the entering big before its southwest tile enters without voiding energy`(
         blazing: Boolean,
+        blockedSight: Boolean,
         state: GameTestState,
     ) =
         state.runDamageTest(
@@ -131,7 +134,7 @@ class NylocasDamageTest {
             entryBarrier = true,
         ) { deps, room ->
             // The game-test area index starts empty; mirror the room's multi-combat area.
-            for (x in 3290..3301) for (z in 4243..4254) {
+            for (x in 3280..3311) for (z in 4232..4254) {
                 deps.areas.registerAll(
                     CoordGrid(x, z),
                     listOf(areas.multiway.id.toShort()).iterator(),
@@ -152,11 +155,16 @@ class NylocasDamageTest {
             player.telejump(room.normal[CoordGrid(3291, 4249)])
             // Click just before the 2x2 footprint first reaches melee range from the room.
             advanceUntil(predicate = { target.coords == room.normal[CoordGrid(3288, 4248)] })
+            if (blockedSight) {
+                for (z in 4248..4249) {
+                    val tile = room.normal[CoordGrid(3290, z)]
+                    deps.collision.add(tile.x, tile.z, tile.level, CollisionFlag.LOC_PROJ_BLOCKER)
+                }
+            }
             player.righthand =
                 InvObj(if (blazing) objs.dinhs_blazing_bulwark else objs.dinhs_bulwark)
             VarPlayerIntMapSetter.set(player, varps.sa_energy, 1000)
             player.withProtectedAccess { specialAttackType = SpecialAttackType.Weapon }
-            val delayBefore = player.actionDelay
             var hitsWhenSpent: List<Hit>? = null
             var targetWhenSpent: CoordGrid? = null
             val damage = mutableListOf<Int>()
@@ -174,16 +182,17 @@ class NylocasDamageTest {
             player.opNpc2(target)
             advance()
             assertEquals(room.normal[CoordGrid(3289, 4248)], target.coords)
-            assertEquals(1000, player.vars[varps.sa_energy])
-            assertEquals(1, player.vars[varps.sa_attack])
-            assertEquals(delayBefore, player.actionDelay)
-            assertTrue(target.pendingHits().isEmpty())
-            advance(ticks = 15)
+            if (blockedSight) assertFalse(deps.rays.hasLineOfSight(player.coords, target.coords))
+            assertEquals(500, player.vars[varps.sa_energy])
+            assertEquals(0, player.vars[varps.sa_attack])
             val hits = checkNotNull(hitsWhenSpent) { "Special never spent energy" }
-            assertEquals(CoordGrid(3290, 4248), targetWhenSpent)
+            assertEquals(CoordGrid(3289, 4248), targetWhenSpent)
             assertEquals(2, hits.size)
             assertTrue(hits.all { it.damage > 0 })
+            advance(ticks = 3)
+            assertEquals(2, damage.size)
             assertTrue(damage.any { it > 0 })
+            assertEquals(500, player.vars[varps.sa_energy])
         }
 
     @ParameterizedTest
@@ -784,7 +793,7 @@ class NylocasDamageTest {
         "SouthWest, Small",
         "SouthWest, Big",
     )
-    fun `bulwark ignores lane nylos until they reach the room`(
+    fun `bulwark hits lane nylos and preserves style nulling through room entry`(
         slot: NylocasSlot,
         size: NylocasSize,
         state: GameTestState,
@@ -820,17 +829,15 @@ class NylocasDamageTest {
             bash(deps, primary)
             assertEquals(2, primary.pendingHits().size)
             assertTrue(primary.pendingHits().all { it.damage > 0 })
-            assertTrue(candidate.pendingHits().isEmpty())
-            assertTrue(candidate.pendingSpotanims.isEmpty())
-            // Directly targeting the lane NPC must also skip all hits and nulling.
+            assertEquals(listOf(0), candidate.pendingHits().map { it.damage })
+            // A lane NPC is eligible as the primary too, but style restrictions still apply.
             bash(deps, candidate)
-            assertTrue(candidate.pendingHits().isEmpty())
-            // Excluding a lane target must not null it for a later matching-style attack.
-            assertTrue(roll(deps, candidate, NylocasStyle.Magic) > 0)
+            assertEquals(List(3) { 0 }, candidate.pendingHits().map { it.damage })
+            assertEquals(0, roll(deps, candidate, NylocasStyle.Magic))
 
             candidate.telejump(deps.collision, room.normal[inside])
             bash(deps, primary)
-            assertEquals(listOf(0), candidate.pendingHits().map { it.damage })
+            assertEquals(List(4) { 0 }, candidate.pendingHits().map { it.damage })
             assertEquals(0, roll(deps, candidate, NylocasStyle.Magic))
         }
 
@@ -1112,6 +1119,7 @@ class NylocasDamageTest {
         val attacks: PlayerAttackManager,
         val areas: AreaIndex,
         val collision: CollisionFlagMap,
+        val rays: RayCastValidator,
         val regions: RegionRegistry,
         val chins: BlackChinchompaWeapons,
         val scythe: ScytheOfViturWeapons,
