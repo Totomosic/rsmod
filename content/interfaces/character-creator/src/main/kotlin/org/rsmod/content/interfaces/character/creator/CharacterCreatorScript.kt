@@ -55,15 +55,8 @@ constructor(private val eventBus: EventBus, private val identKits: IdentKitTypeL
     private fun Player.onLogin() {
         pronounVar = appearance.pronoun
         if (tutorial < TUTORIAL_COMPLETE) {
-            openCharacterCreator()
+            openCharacterCreator(eventBus)
         }
-    }
-
-    private fun Player.openCharacterCreator() {
-        bodyTypeVar = appearance.bodyType
-        pronounVar = appearance.pronoun
-        ifOpenMainModal(creator_interfaces.player_design, eventBus)
-        ifSetEvents(creator_components.pronoun_options, PRONOUN_OPTIONS, IfEvent.Op1)
     }
 
     private fun Player.cycleKit(bodyPart: DesignBodyPart, step: Int) {
@@ -126,11 +119,15 @@ constructor(private val eventBus: EventBus, private val identKits: IdentKitTypeL
 
     private fun availableKits(bodyType: Int, part: Int): List<Int> =
         identKits.selectable(part + bodyType * BODY_PARTS_PER_TYPE)
+}
 
-    private companion object {
-        /** Dropdown option sub-components, created client-side starting at sub-id 1. */
-        val PRONOUN_OPTIONS = 1..3
-    }
+/** Opens the existing design without resetting appearance or first-login progress. */
+fun Player.openCharacterCreator(eventBus: EventBus) {
+    bodyTypeVar = appearance.bodyType
+    pronounVar = appearance.pronoun
+    ifOpenMainModal(creator_interfaces.player_design, eventBus)
+    // Dropdown option sub-components are created client-side starting at sub-id 1.
+    ifSetEvents(creator_components.pronoun_options, 1..3, IfEvent.Op1)
 }
 
 private var Player.tutorial by intVarp(creator_varps.tutorial)
