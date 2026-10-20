@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule
 import com.google.inject.Scopes
 import jakarta.inject.Inject
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.zone.payload.SoundArea
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -18,6 +19,7 @@ import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.script.onAiOpPlayer2
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpNpc1
@@ -47,12 +49,129 @@ import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.game.entity.util.EntityFaceAngle
 import org.rsmod.game.entity.util.EntityFaceTarget
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.seq.EntitySeq
+import org.rsmod.game.spot.EntitySpotanim
 import org.rsmod.game.type.interf.IfButtonOp
 import org.rsmod.map.CoordGrid
+import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class SpellbookSwapTest {
+    @ParameterizedTest
+    @ValueSource(ints = [0, 2, 10])
+    fun `shadow veil returns to Lunar with sound while preserving attack cooldown and NPC approach`(
+        delay: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(ShadowVeil::class, NpcAction::class) { deps ->
+            swap(3)
+            val sounds = captureSounds(deps.zones)
+            val npc = spawnNpc(player.coords.translateX(6), actionTarget)
+            allocZoneCollision(player.coords)
+            advance()
+            val start = player.coords
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.actionDelay = mapClock.cycle + delay
+            val nextAttack = player.actionDelay
+            player.opNpc1(npc)
+            player.ifButton(shadow_veil_components.cast)
+            advance()
+            assertEquals(Spellbook.Lunars.varValue, player.vars[varbits.spellbook])
+            assertEquals(0, player.swapActive)
+            assertEquals(initialXp + 58, player.statMap.getXP(stats.magic))
+            assertEquals(nextAttack, player.actionDelay)
+            assertEquals(listOf(SoundArea(5032, 0, 1, 10, 1, 0, 0)), sounds)
+            assertNotNull(player.interaction)
+            assertEquals(EntityFaceTarget(npc), player.faceEntity)
+            assertNotEquals(start, player.coords)
+            advanceUntil({ player.interaction == null }, timeoutTicks = 15)
+            assertMessageSent("Action completed.")
+        }
+
+    @Test
+    fun GameTestState.`shadow veil casts without a target and can be recast without a cooldown`() =
+        runSwapTest(ShadowVeil::class) { deps ->
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+            val sounds = captureSounds(deps.zones)
+            val animations = mutableListOf<Int>()
+            val spots = mutableListOf<Int>()
+            eventBus.subscribeUnbound(GameLifecycle.UpdateInfo::class.java) {
+                if (player.pendingSequence != EntitySeq.NULL) {
+                    animations += player.pendingSequence.id
+                }
+                spots += player.pendingSpotanims.map { EntitySpotanim(it).id }
+            }
+            val initialXp = player.statMap.getXP(stats.magic)
+            repeat(2) {
+                player.ifButton(shadow_veil_components.cast)
+                advance()
+            }
+            assertEquals(initialXp + 116, player.statMap.getXP(stats.magic))
+            assertEquals(Spellbook.Arceuus.varValue, player.vars[varbits.spellbook])
+            assertEquals(0, player.swapActive)
+            assertEquals(List(2) { SoundArea(5032, 0, 1, 10, 1, 0, 0) }, sounds)
+            assertEquals(listOf(8979, 8979), animations)
+            assertEquals(listOf(1881, 1881), spots)
+            // Neither animation embeds another sound that would duplicate the explicit cast audio.
+            for (id in listOf(8979, 8998)) {
+                val seq = checkNotNull(cacheTypes.seqs[id])
+                assertTrue(seq.sounds.isEmpty())
+                assertTrue(seq.mayaAnimationSounds.isNullOrEmpty())
+            }
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2])
+    fun `failed shadow veil casts preserve the swap and consume no runes XP or sound`(
+        failure: Int,
+        state: GameTestState,
+    ) =
+        state.runSwapTest(ShadowVeil::class) { deps ->
+            swap(3)
+            when (failure) {
+                0 -> player.setCurrentLevel(stats.magic, 46)
+                1 -> player.inv[0] = null
+                2 ->
+                    VarPlayerIntMapSetter.set(
+                        player,
+                        varbits.spellbook,
+                        Spellbook.Standard.varValue,
+                    )
+            }
+            val sounds = captureSounds(deps.zones)
+            val book = player.vars[varbits.spellbook]
+            val inventory = player.inv.toList()
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.actionDelay = mapClock.cycle + 10
+            val nextAttack = player.actionDelay
+            player.ifButton(shadow_veil_components.cast)
+            advance()
+            assertEquals(nextAttack, player.actionDelay)
+            assertEquals(book, player.vars[varbits.spellbook])
+            assertEquals(1, player.swapActive)
+            assertEquals(inventory, player.inv.toList())
+            assertEquals(initialXp, player.statMap.getXP(stats.magic))
+            assertTrue(sounds.isEmpty())
+        }
+
+    @Test
+    fun GameTestState.`shadow veil consumes its rune requirements once at the minimum level`() =
+        runSwapTest(ShadowVeil::class) { deps ->
+            VarPlayerIntMapSetter.set(player, varbits.spellbook, Spellbook.Arceuus.varValue)
+            player.setCurrentLevel(stats.magic, 47)
+            player.inv[0] = null
+            val spell = checkNotNull(deps.spells.getObjSpell(objs.spell_shadow_veil))
+            for ((slot, req) in spell.objReqs.withIndex()) {
+                player.inv[slot] = InvObj(req.obj, req.count * 2)
+            }
+            val initialXp = player.statMap.getXP(stats.magic)
+            player.ifButton(shadow_veil_components.cast)
+            advance()
+            for (req in spell.objReqs) assertEquals(req.count, player.inv.count(req.obj))
+            assertEquals(initialXp + 58, player.statMap.getXP(stats.magic))
+        }
+
     @ParameterizedTest
     @ValueSource(ints = [0, 2, 10])
     fun `mark of darkness leaves ready and pending attack cooldowns unchanged`(
@@ -589,6 +708,14 @@ class SpellbookSwapTest {
         advance(ticks = 3)
     }
 
+    private fun GameTestScope.captureSounds(zones: ZoneUpdateMap): MutableList<SoundArea> {
+        val sounds = mutableListOf<SoundArea>()
+        eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
+            sounds += zones[ZoneKey.from(player.coords)]?.filterIsInstance<SoundArea>().orEmpty()
+        }
+        return sounds
+    }
+
     private fun GameTestState.runSwapTest(
         vararg extraScripts: KClass<out PluginScript>,
         test: GameTestScope.(Dependencies) -> Unit,
@@ -617,7 +744,11 @@ class SpellbookSwapTest {
 
     class Dependencies
     @Inject
-    constructor(val spells: MagicSpellRegistry, val runes: MagicRuneManager)
+    constructor(
+        val spells: MagicSpellRegistry,
+        val runes: MagicRuneManager,
+        val zones: ZoneUpdateMap,
+    )
 
     class NpcAction : PluginScript() {
         override fun ScriptContext.startup() {
