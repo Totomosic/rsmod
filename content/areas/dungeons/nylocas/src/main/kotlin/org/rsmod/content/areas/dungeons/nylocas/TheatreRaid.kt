@@ -177,8 +177,10 @@ constructor(
 
     fun sendWaveReport(region: Region, payload: String) {
         val raid = raids[region.uid] ?: return
+        val messages = NylocasReportMessages.encode(payload)
         for (member in raid.members) {
-            if (regions[member.coords]?.uid == region.uid) member.mes(payload, ChatType.Console)
+            if (regions[member.coords]?.uid != region.uid) continue
+            for (message in messages) member.mes(message, ChatType.Console)
         }
     }
 
