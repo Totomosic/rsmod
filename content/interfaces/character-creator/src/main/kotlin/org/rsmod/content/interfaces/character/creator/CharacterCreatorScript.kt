@@ -22,8 +22,8 @@ import org.rsmod.plugin.scripts.ScriptContext
 /**
  * The Character Creator (`player_design`) shown to new players on their first login.
  *
- * Players start in Lumbridge rather than on Tutorial Island, so the creator opens on login until
- * the player confirms their design. Behaviour follows the OSRS Wiki:
+ * The creator opens on login until the player confirms their design. Behaviour follows the OSRS
+ * Wiki:
  * - Each body part cycles through the identity kits available for the selected body type.
  * - Each colour cycles through the colours listed on the wiki's makeover pages.
  * - Selecting body type A or B changes the pronouns to "He/him" or "She/her" respectively, unless

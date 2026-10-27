@@ -9,12 +9,16 @@ import java.nio.file.Path
 import net.rsprot.protocol.game.incoming.misc.user.ClientCheat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.rsmod.api.config.refs.components
 import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.config.refs.modlevels
+import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.net.rsprot.handlers.ClientCheatHandler
 import org.rsmod.api.parsers.json.Json
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.testing.GameTestState
@@ -29,9 +33,11 @@ import org.rsmod.content.interfaces.character.creator.configs.creator_interfaces
 import org.rsmod.content.interfaces.character.creator.configs.creator_varps
 import org.rsmod.content.other.commands.GearPresetStore
 import org.rsmod.game.entity.NpcList
+import org.rsmod.game.entity.Player
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.map.collision.get
 import org.rsmod.game.type.mod.ModLevelTypeList
+import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
@@ -58,6 +64,40 @@ class VerSinhazaLobbyTest {
         val collision: CollisionFlagMap,
         val modLevels: ModLevelTypeList,
     )
+
+    @Test
+    fun GameTestState.`new characters log in at Ver Sinhaza with the character creator open`() =
+        runLobbyTest { deps ->
+            val newcomer = Player()
+            VarPlayerIntMapSetter.set(newcomer, varbits.new_player_account, 1)
+            registerPlayer(coords = CoordGrid(3222, 3218, 0), player = newcomer)
+            assertEquals(VerSinhaza.arrival, newcomer.coords)
+            assertNull(deps.regions[newcomer.coords])
+            assertTrue(newcomer.ui.containsModal(creator_interfaces.player_design))
+        }
+
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2])
+    fun `returning characters log in at Ver Sinhaza regardless of saved location`(
+        location: Int,
+        state: GameTestState,
+    ) =
+        state.runLobbyTest { deps ->
+            val savedCoords =
+                when (location) {
+                    0 -> CoordGrid(3222, 3218, 0)
+                    1 -> CoordGrid(3208, 3220, 2)
+                    else -> createRegion(BloatExitRoom.template).normal[BloatExitRoom.doorstep]
+                }
+            val returning = Player()
+            VarPlayerIntMapSetter.set(returning, creator_varps.tutorial, TUTORIAL_COMPLETE)
+            registerPlayer(coords = savedCoords, player = returning)
+            assertEquals(VerSinhaza.arrival, returning.coords)
+            assertNull(deps.regions[returning.coords])
+            assertFalse(returning.ui.containsModal(creator_interfaces.player_design))
+            advance()
+            assertEquals(VerSinhaza.arrival, returning.coords)
+        }
 
     @Test
     fun GameTestState.`lobby arrival guide and bank occupy open courtyard tiles`() =
@@ -109,7 +149,7 @@ class VerSinhazaLobbyTest {
             guest.ifButton(creator_components.confirm)
             advance()
             guest.opNpc1(deps.npcs.single())
-            advance()
+            advanceUntil({ guest.ui.containsModal(interfaces.chatmenu) }, timeoutTicks = 5)
             guest.resumePauseButton(components.chatmenu_pbutton, 3)
             advance()
             guest.resumeStringDialog("raid_host")

@@ -11,6 +11,7 @@ import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpNpc1
+import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.api.type.refs.loc.LocReferences
 import org.rsmod.api.type.refs.npc.NpcReferences
 import org.rsmod.content.areas.dungeons.nylocas.BloatExit
@@ -21,6 +22,7 @@ import org.rsmod.content.other.commands.GearPresetService
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.npc.NpcMode
+import org.rsmod.game.entity.util.PathingEntityCommon
 import org.rsmod.game.loc.LocAngle
 import org.rsmod.game.loc.LocShape
 import org.rsmod.game.movement.MoveRestrict
@@ -28,6 +30,7 @@ import org.rsmod.game.type.npc.NpcTypeList
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
+import org.rsmod.routefinder.collision.CollisionFlagMap
 
 class VerSinhazaLobby
 @Inject
@@ -40,8 +43,10 @@ constructor(
     private val raid: TheatreRaid,
     private val gear: GearPresetService,
     private val events: EventBus,
+    private val collision: CollisionFlagMap,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
+        onPlayerLogin { PathingEntityCommon.telejump(player, collision, VerSinhaza.arrival) }
         onEvent<GameLifecycle.Startup> {
             val guide = Npc(npcTypes[sinhaza_npcs.guide], VerSinhaza.guide)
             guide.mode = NpcMode.None
