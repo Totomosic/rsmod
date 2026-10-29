@@ -7,6 +7,7 @@ import kotlin.jvm.optionals.getOrNull
 import kotlin.reflect.KClass
 import kotlin.time.measureTime
 import org.junit.jupiter.api.extension.ExtensionContext
+import org.rsmod.api.random.GameRandom
 import org.rsmod.api.realm.Realm
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.route.RayCastFactory
@@ -127,15 +128,18 @@ public class GameTestState {
      *   used.
      * @param scripts The [PluginScript] classes relevant to the test scope. If specified, only the
      *   events for these scripts will be loaded; otherwise, no plugin events are registered.
+     * @param coreRandom Optional core RNG for simulations. Ordinary tests retain their fixed RNG.
      * @see [GameTestScope]
      */
     public fun <T : Any> runInjectedGameTest(
         dependency: KClass<T>,
         childModule: AbstractModule? = null,
         vararg scripts: KClass<out PluginScript>,
+        coreRandom: GameRandom? = null,
         testBody: GameTestScope.(dependency: T) -> Unit,
     ) {
-        val injector = GameTestScope.Builder(this, scripts.toSet()).buildInjector(childModule)
+        val injector =
+            GameTestScope.Builder(this, scripts.toSet(), coreRandom).buildInjector(childModule)
         val scope = injector.getInstance(GameTestScope::class.java)
         val injectedDependency = injector.getInstance(dependency.java)
         testBody(scope, injectedDependency)

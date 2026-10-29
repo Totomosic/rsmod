@@ -937,19 +937,23 @@ constructor(
         Assertions.assertDoesNotThrow { block() }
     }
 
-    public class Builder(state: GameTestState, private val scripts: Set<KClass<out PluginScript>>) {
+    public class Builder(
+        state: GameTestState,
+        private val scripts: Set<KClass<out PluginScript>>,
+        private val coreRandom: GameRandom? = null,
+    ) {
         private val cacheTypes: TypeListMap = state.cacheTypes
         private val collisionMap: CollisionFlagMap = state.collision
 
         internal fun build(): GameTestScope {
-            val module = TestModule(cacheTypes, collisionMap)
+            val module = TestModule(cacheTypes, collisionMap, coreRandom)
             val injector = Guice.createInjector(module)
             bindScriptEvents(injector)
             return injector.getInstance(GameTestScope::class.java)
         }
 
         internal fun buildInjector(optionalChildModule: AbstractModule?): Injector {
-            val module = TestModule(cacheTypes, collisionMap)
+            val module = TestModule(cacheTypes, collisionMap, coreRandom)
             val parentInjector = Guice.createInjector(module)
             val injector =
                 if (optionalChildModule != null) {
@@ -973,6 +977,7 @@ constructor(
     private class TestModule(
         private val cacheTypes: TypeListMap,
         private val gameCollisionMap: CollisionFlagMap,
+        private val coreRandom: GameRandom?,
     ) : AbstractModule() {
         override fun configure() {
             bindInstances()
@@ -995,7 +1000,7 @@ constructor(
 
             bind(GameRandom::class.java)
                 .annotatedWith(CoreRandom::class.java)
-                .toInstance(FixedRandom(start = 0))
+                .toInstance(coreRandom ?: FixedRandom(start = 0))
 
             VariableGameRandom().let { random ->
                 bind(GameRandom::class.java).toInstance(random.impl)
@@ -1168,7 +1173,13 @@ constructor(
     public class VariableGameRandom {
         internal val impl: InternalRandomImpl = InternalRandomImpl()
         private val sequence = SequenceRandom(size = 128)
-        private val default = DefaultGameRandom(seed = 123456)
+        private var default = DefaultGameRandom(seed = 123456)
+
+        /** Seed the fallback RNG for reproducible simulation trials (with no queued overrides). */
+        public fun reseed(seed: Long) {
+            check(!sequence.hasNext) { "Consume queued random overrides before reseeding." }
+            default = DefaultGameRandom(seed)
+        }
 
         /** @see [SequenceRandom.next] */
         public var next: Int by sequence::next

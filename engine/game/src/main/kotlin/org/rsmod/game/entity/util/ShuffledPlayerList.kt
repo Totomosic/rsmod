@@ -1,13 +1,21 @@
 package org.rsmod.game.entity.util
 
+import kotlin.random.Random
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 
 public class ShuffledPlayerList(private val playerList: PlayerList) : Iterable<Player> {
     private val shuffledSlots = IntArray(playerList.capacity) { it }
+    private var random: Random = Random.Default
+
+    /** Reproduce player processing order in offline simulations. Live worlds use Random.Default. */
+    public fun reseed(seed: Long) {
+        random = Random(seed)
+        for (slot in shuffledSlots.indices) shuffledSlots[slot] = slot
+    }
 
     public fun shuffle() {
-        shuffledSlots.shuffle()
+        shuffledSlots.shuffle(random)
     }
 
     override fun iterator(): Iterator<Player> = ShuffledListIterator()

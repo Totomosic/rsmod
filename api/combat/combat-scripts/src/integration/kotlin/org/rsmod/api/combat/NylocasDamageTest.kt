@@ -247,10 +247,7 @@ class NylocasDamageTest {
                 }
             }
             eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
-                client
-                    .filterIsInstance<MessageGame>()
-                    .lastOrNull { it.message.startsWith("LNW3 ") }
-                    ?.let { latestReport = it.message.split(" ") }
+                latestWaveReport()?.let { latestReport = it }
             }
             eventBus.subscribeUnbound(GameLifecycle.LateCycle::class.java) {
                 val age = deps.clock.cycle - 1 - spawnCycle
@@ -320,10 +317,7 @@ class NylocasDamageTest {
             target.baseHitpointsLvl = hp
             var report: List<String>? = null
             eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
-                client
-                    .filterIsInstance<MessageGame>()
-                    .lastOrNull { it.message.startsWith("LNW3 ") }
-                    ?.let { report = it.message.split(" ") }
+                latestWaveReport()?.let { report = it }
             }
             random.next = 0
             player.withProtectedAccess { deps.combat.attack(this, target, attack) }
@@ -1066,6 +1060,20 @@ class NylocasDamageTest {
             if (args is Hit) add(args)
         }
         iterator.cleanUp()
+    }
+
+    private fun GameTestScope.latestWaveReport(): List<String>? {
+        val messages = client.filterIsInstance<MessageGame>().map { it.message }
+        messages
+            .lastOrNull { it.startsWith("LNW4 ") }
+            ?.let {
+                return it.split(" ")
+            }
+        val fragments = messages.filter { it.startsWith("LNF1 ") }.map { it.split(" ", limit = 6) }
+        val last = fragments.lastOrNull() ?: return null
+        val snapshot = fragments.filter { it[1] == last[1] && it[2] == last[2] }
+        check(snapshot.size == last[4].toInt()) { "Incomplete wave report fragments" }
+        return snapshot.sortedBy { it[3].toInt() }.joinToString("") { it[5] }.split(" ")
     }
 
     private fun GameTestState.runDamageTest(

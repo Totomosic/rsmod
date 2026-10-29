@@ -46,4 +46,25 @@ dependencies {
     integrationImplementation(projects.api.spellsRunes)
     integrationImplementation(projects.api.hitPlugin)
     integrationImplementation(libs.fastutil)
+    integrationImplementation(projects.api.nylocasAgents)
+    integrationImplementation(projects.content.interfaces.prayerTab)
+    integrationImplementation(projects.content.other.consumables)
+}
+
+// Explicit batch entry point; ordinary integration runs skip the simulation test.
+tasks.register<Test>("simulateNylocas") {
+    val suite = testing.suites.named<JvmTestSuite>("integration")
+    testClassesDirs = suite.get().sources.output.classesDirs
+    classpath = suite.get().sources.runtimeClasspath
+    useJUnitPlatform()
+    workingDir = rootDir
+    filter { includeTestsMatching("*NylocasSimulationTest") }
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", true)
+    systemProperty("nylo.simulation", "true")
+    for (key in listOf("trials", "seed", "maxTicks", "output")) {
+        providers.gradleProperty("nylo.$key").orNull?.let { systemProperty("nylo.$key", it) }
+    }
+    outputs.upToDateWhen { false }
+    testLogging.showStandardStreams = true
+    maxHeapSize = "2g"
 }
