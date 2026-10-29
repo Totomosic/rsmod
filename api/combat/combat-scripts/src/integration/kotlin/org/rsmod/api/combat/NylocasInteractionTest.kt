@@ -5,6 +5,7 @@ import com.google.inject.Scopes
 import jakarta.inject.Inject
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.api.Test
 import org.rsmod.api.combat.commons.PlayerAttackTarget
 import org.rsmod.api.combat.scripts.PvNCombatScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
@@ -37,6 +38,40 @@ class NylocasInteractionTest {
         val npcRepo: NpcRepository,
         val npcTypes: NpcTypeList,
     )
+
+    @Test
+    fun `a queued melee attack launches on the cycle running reaches its target`(state: GameTestState) =
+        state.runInjectedGameTest(
+            Dependencies::class,
+            object : AbstractModule() {
+                override fun configure() {
+                    bind(AttackStyles::class.java).`in`(Scopes.SINGLETON)
+                    bind(AttackTypes::class.java).`in`(Scopes.SINGLETON)
+                    install(MagicSpellModule())
+                }
+            },
+            PvNCombatScript::class,
+            WeaponAttackStylesScript::class,
+            WeaponAttackTypesScript::class,
+        ) { deps ->
+            advance(ticks = 25)
+            val room = createRegion(NylocasRoom.template)
+            player.telejump(room.normal[org.rsmod.map.CoordGrid(3295, 4248)])
+            player.enableRun()
+            player.setBaseLevel(stats.hitpoints, 99)
+            player.setCurrentLevel(stats.hitpoints, 99)
+            val npc = Npc(deps.npcTypes[nylocas_npcs.incoming(NylocasSize.Small, NylocasStyle.Melee)], player.coords.translateX(3))
+            npc.mode = NpcMode.None
+            npc.setHunt(0)
+            npc.aiTimer(0)
+            deps.npcRepo.add(npc, Int.MAX_VALUE)
+            advance()
+            val targets = mutableListOf<Npc>()
+            eventBus.subscribeUnbound(PlayerAttackTarget::class.java) { targets += target }
+            player.opNpc2(npc)
+            advance()
+            assertEquals(listOf(npc), targets)
+        }
 
     @ParameterizedTest
     @CsvSource(

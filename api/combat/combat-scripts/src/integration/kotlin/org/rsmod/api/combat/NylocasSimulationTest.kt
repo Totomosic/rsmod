@@ -7,6 +7,7 @@ import com.google.inject.Scopes
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.reflect.KClass
+import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty
 import org.rsmod.api.combat.scripts.PvNCombatScript
@@ -22,6 +23,7 @@ import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
 import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.config.refs.varps
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.hit.plugin.NpcHitScript
 import org.rsmod.api.hit.plugin.PlayerHitScript
 import org.rsmod.api.player.stat.hitpoints
@@ -71,7 +73,7 @@ class NylocasSimulationTest {
         output.toAbsolutePath().parent.let(Files::createDirectories)
         Files.newBufferedWriter(output).use { writer ->
             writer.appendLine(
-                "trial,seed,status,ticks,ranger_attacks,mage_attacks,ranger_idle_ticks,mage_idle_ticks,ranger_ready_idle_ticks,mage_ready_idle_ticks,same_tick_double_ups,shared_targets,positive_damage_rolls,wall_seconds"
+                "trial,seed,status,ticks,ranger_attacks,mage_attacks,ranger_idle_ticks,mage_idle_ticks,ranger_ready_idle_ticks,mage_ready_idle_ticks,same_tick_double_ups,shared_targets,positive_damage_rolls,pre_cap_stalls,post_cap_stalls,pre_29_stalls,wave_29_stalls,wall_seconds"
             )
             repeat(trials) { trial ->
                 val started = System.nanoTime()
@@ -167,6 +169,10 @@ class NylocasSimulationTest {
                         "Mage did not enter"
                     }
                     val agents = NylocasServerAgents(this, deps, player, magePlayer, room)
+                    val stalls = NylocasSimulationStalls()
+                    eventBus.subscribeUnbound(GameLifecycle.EndCycle::class.java) {
+                        client.filterIsInstance<MessageGame>().forEach { stalls.observe(it.message) }
+                    }
                     var tick = 0
                     var status = "timeout"
                     while (tick < maxTicks) {
@@ -199,6 +205,10 @@ class NylocasSimulationTest {
                                 agents.doubleUps,
                                 agents.targets.values.count { it == 3 },
                                 agents.positiveRolls,
+                                stalls.preCap,
+                                stalls.postCap,
+                                stalls.pre29,
+                                stalls.wave29,
                                 elapsed,
                             )
                             .joinToString(",")

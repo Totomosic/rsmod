@@ -64,6 +64,8 @@ final class RangerPreCapPlanner
 					Shot previous = plan.shots.isEmpty() ? null : plan.shots.get(plan.shots.size() - 1);
 					prioritize(extensions, room, previous == null ? tick : previous.tick + 1,
 						previous == null ? room.ready : previous.tick + previous.decision.weapon.cooldown);
+					if (previous == null && extensions.stream().anyMatch(p -> strategy.committed(last(p), tick)))
+						extensions.removeIf(p -> !strategy.committed(last(p), tick));
 				}
 				// A short plan that clears the work must not lose to a longer, less useful one.
 				if (extensions.isEmpty() && !plan.shots.isEmpty()) choices.add(plan);
@@ -79,8 +81,16 @@ final class RangerPreCapPlanner
 		String sequence = best.shots.stream().map(s -> s.decision.weapon + " #" + s.decision.target.index
 			+ " @" + s.tick).collect(Collectors.joining(" → "));
 		Decision action = first.decision;
-		Decision decision = new Decision(first.tick <= tick ? action.target : null, action.weapon,
+		boolean hard = action.rule != null && action.target.wave == 10;
+		boolean queue = tick >= room.ready && !action.target.awaitingHit(tick) && action.target.claimedUntil <= tick
+			&& !room.obstructed.contains(action.target.key)
+			&& RangerFlickers.matchesNext(action.target, action.weapon.style, tick)
+			&& allowed(room, action.target, action.weapon, tick - action.target.born)
+			&& (action.weapon != Weapon.CHIN || hard)
+			&& (!hard || rule(action.target, action.weapon, tick - action.target.born) != null);
+		Decision decision = new Decision(first.tick <= tick || queue ? action.target : null, action.weapon,
 			first.position, action.special, action.rule, "Pre-cap plan: " + sequence);
+		decision.pathToTarget = first.tick > tick && queue;
 		if (decision.target == null) decision.approach = action.target;
 		return decision;
 	}
@@ -135,7 +145,7 @@ final class RangerPreCapPlanner
 				for (int at = ready; at <= now + HORIZON; at++)
 				{
 					int age = at - crab.born;
-					if (age < 0 || age >= 49 || crab.claimedUntil > at || !crab.big && crab.ownHitUntil > at + 1) continue;
+					if (age < 0 || age >= 49 || crab.claimedUntil > at || crab.awaitingHit(at)) continue;
 					Style style = predictedStyle(crab, now, at);
 					if (style != weapon.style || predictedStyle(crab, now, at + 1) != style
 						|| !allowed(room, crab, weapon, age)) continue;
@@ -201,7 +211,7 @@ final class RangerPreCapPlanner
 			return (clawAssignment || strategy.assignedBig(crab, room, age))
 				&& (weapon != Weapon.CLAWS || clawAssignment) && weapon != Weapon.CHIN;
 		}
-		if (weapon == Weapon.EYE) return crab.lane == Lane.SPLIT || RangerStrategy.assignedMagic(crab);
+		if (weapon == Weapon.EYE) return !RangerStrategy.magePacket(crab, crab.born + age);
 		// No cross-room melee chasing; melee is local fallback work.
 		if (weapon == Weapon.CLAWS) return crab.distance(room.player) <= 1;
 		return true;

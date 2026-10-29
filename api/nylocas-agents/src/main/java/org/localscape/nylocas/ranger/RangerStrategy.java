@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.localscape.nylocas.Tile;
+import org.localscape.nylocas.AttackIntent;
+import org.localscape.nylocas.AttackTiming;
 
 /** Client-independent decision policy. Times are request ticks, one before Blert attack observations. */
 public final class RangerStrategy
@@ -51,6 +53,7 @@ public final class RangerStrategy
 		public boolean dying;
 		public int claimedUntil;
 		public int ownHitUntil;
+		public int ownHitHp;
 		public int hp;
 
 		public Crab(int key, int index, int born, int wave, Lane lane, char slot, boolean big, Style style, Tile point)
@@ -73,6 +76,7 @@ public final class RangerStrategy
 			return Math.max(Math.max(point.getX() - from.getX(), from.getX() - point.getX() - size + 1),
 				Math.max(point.getY() - from.getY(), from.getY() - point.getY() - size + 1));
 		}
+		public boolean awaitingHit(int tick) { return ownHitUntil > 0 && tick <= ownHitUntil && hp >= ownHitHp; }
 	}
 
 	public static final class Room
@@ -98,6 +102,7 @@ public final class RangerStrategy
 		public final String rule;
 		public final String reason;
 		public Crab approach;
+		public boolean pathToTarget;
 
 		public Decision(Crab target, Weapon weapon, Tile tile, boolean special, String rule, String reason)
 		{
@@ -248,36 +253,48 @@ public final class RangerStrategy
 	private final Set<String> completed = new HashSet<>();
 	private final Set<Integer> opened = new HashSet<>();
 	private final RangerPreCapPlanner preCap = new RangerPreCapPlanner(this);
+	private final AttackIntent<Weapon> intent = new AttackIntent<>();
 
 	public void reset()
 	{
 		completed.clear();
 		opened.clear();
+		intent.clear();
 	}
 
 	public void attacked(Decision decision, int tick)
 	{
+		intent.clear();
 		if (decision.rule != null) completed.add(decision.rule);
 		opened.add(decision.target.key);
 		// Wait for a small's projectile/HP update before deciding whether another hit is useful.
 		decision.target.ownHitUntil = tick + (decision.weapon == Weapon.CLAWS ? 1 : decision.weapon == Weapon.BOW ? 3 : 2);
+		decision.target.ownHitHp = decision.target.hp;
 	}
 
 	public Decision decide(Room room, int tick)
+	{
+		Decision decision = choose(room, tick);
+		Crab target = decision.target != null ? decision.target : decision.approach;
+		if (target == null) intent.clear();
+		else intent.select(target.key, decision.weapon, tick);
+		return decision;
+	}
+
+	boolean committed(Decision decision, int tick) { return intent.matches(decision.target.key, decision.weapon, tick); }
+
+	private Decision choose(Room room, int tick)
 	{
 		if (room.wave == 0) return prepare(Weapon.BOW, tile(3292, 4249), "Opening setup");
 		if (room.wave == 31 && finalPacketFinished(room, tick)) room.cleanup = true;
 		Reservation next = reservation(room, tick);
 		if (room.wave < 20) return preCap.decide(room, tick, next);
-		if (tick < room.ready) return staging(room, next, "Attack cooldown");
-
-		Decision best = null;
-		int bestScore = Integer.MIN_VALUE;
+		List<Candidate> candidates = new ArrayList<>();
 		for (Crab crab : room.crabs)
 		{
 			int age = tick - crab.born;
-			if (crab.dying || crab.claimedUntil > tick || (!crab.big && crab.ownHitUntil > tick)
-				|| age >= 49 || crab.big && crab.wave < 20 || (room.cleanup && crab.wave <= 29)) continue;
+			if (crab.dying || crab.claimedUntil > tick || crab.awaitingHit(tick)
+				|| age >= 49 || crab.big && crab.wave < 20 && room.wave < 29 || room.wave == 31 && crab.wave == 29) continue;
 			for (Rule rule : RULES)
 			{
 				if (completed.contains(rule.name) || !rule.matches(crab) || age < rule.first || age > rule.last
@@ -287,11 +304,7 @@ public final class RangerStrategy
 					- (crab.born + rule.last - tick) * 25 - age;
 				Decision action = new Decision(crab, rule.weapon, rule.stage,
 					rule.special && room.specialEnergy >= 500, rule.name, rule.name);
-				if (fits(room, next, action, tick) && score > bestScore)
-				{
-					best = action;
-					bestScore = score;
-				}
+				add(candidates, room, next, action, score, tick, crab.born + rule.last);
 			}
 			// A scheduled identity must not be killed prematurely as generic filler.
 			if (protectedPacket(crab, tick)) continue;
@@ -310,9 +323,9 @@ public final class RangerStrategy
 			{
 				weapon = crab.style == Style.RANGE ? Weapon.PIPE : crab.style == Style.MAGIC ? Weapon.EYE
 					: crab.wave == 6 ? Weapon.CLAWS : null;
-				score = (room.cleanup ? 16000 : opened.contains(crab.key) && age < 14 ? 14000 : 6800) - age * 40;
+				score = (room.cleanup && crab.wave >= 30 ? 16000 : opened.contains(crab.key) && age < 14 ? 14000 : 6800) - age * 40;
 			}
-			else if (!crab.big && crab.style == Style.MAGIC && (crab.lane == Lane.SPLIT || assignedMagic(crab)))
+			else if (!crab.big && crab.style == Style.MAGIC && !magePacket(crab, tick))
 			{
 				weapon = Weapon.EYE;
 				score = 5500 - age * 85;
@@ -324,14 +337,37 @@ public final class RangerStrategy
 			}
 			if (weapon == null || !RangerFlickers.matchesNext(crab, weapon.style, tick)) continue;
 			Decision filler = new Decision(crab, weapon, CENTER, false, null, "Recent " + crab.style + (crab.big ? " big" : " small"));
-			if (fits(room, next, filler, tick) && score > bestScore)
+			add(candidates, room, next, filler, score, tick, crab.born + 48);
+		}
+		if (candidates.isEmpty() && room.wave >= 20 && room.wave < 29)
+		{
+			// Keep the lane assignments first; spare cooldown can finish an older big.
+			for (Crab crab : room.crabs)
 			{
-				best = filler;
-				bestScore = score;
+				if (!crab.big || crab.wave >= 20 || crab.dying || crab.claimedUntil > tick
+					|| crab.awaitingHit(tick) || tick - crab.born >= 49 || crab.style == Style.MELEE) continue;
+				Weapon weapon = crab.style == Style.RANGE ? Weapon.PIPE : Weapon.EYE;
+				if (!RangerFlickers.matchesNext(crab, weapon.style, tick)) continue;
+				Decision action = new Decision(crab, weapon, CENTER, false, null, "Spare time on old big");
+				add(candidates, room, next, action, 100, tick, crab.born + 48);
 			}
 		}
+		Candidate best = candidates.stream().min(Comparator.comparingInt((Candidate c) -> c.at)
+			.thenComparingInt(c -> -c.score).thenComparingInt(c -> c.decision.target.key)).orElse(null);
 		if (best == null) return staging(room, next, "Reserve next packet");
-		return best;
+		int earliest = best.at;
+		best = candidates.stream().filter(c -> c.at == earliest && committed(c.decision, tick))
+			.min(Comparator.comparingInt((Candidate c) -> -c.score)).orElse(best);
+		if (best.at <= tick || tick >= room.ready && !room.obstructed.contains(best.decision.target.key))
+		{
+			best.decision.pathToTarget = best.at > tick;
+			return best.decision;
+		}
+		Decision action = best.decision;
+		Decision approach = prepare(action.weapon, best.position,
+			"Plan " + action.weapon + " #" + action.target.index + " @" + best.at + ": " + action.reason);
+		approach.approach = action.target;
+		return approach;
 	}
 
 	private boolean protectedPacket(Crab crab, int tick)
@@ -348,6 +384,7 @@ public final class RangerStrategy
 
 	boolean assignedBig(Crab c, Room room, int age)
 	{
+		if (room.wave >= 29 && c.style == Style.RANGE) return true;
 		if (room.wave >= 20 && c.wave < 20) return false;
 		BigAssignment assignment = BigAssignment.of(c);
 		if (assignment != null) return age >= assignment.first && (c.wave != 19 || c.style == Style.MAGIC);
@@ -407,6 +444,12 @@ public final class RangerStrategy
 			|| c.wave == 15 && c.lane == Lane.EAST;
 	}
 
+	static boolean magePacket(Crab c, int tick)
+	{
+		return !c.big && (c.wave == 11 && c.lane == Lane.EAST && tick - c.born <= 2
+			|| c.wave == 21 && c.lane == Lane.WEST && tick - c.born <= 2);
+	}
+
 	public static final class Reservation
 	{
 		final Rule rule;
@@ -419,6 +462,7 @@ public final class RangerStrategy
 		List<Reservation> reservations = new ArrayList<>();
 		for (Rule rule : RULES)
 		{
+			if (room.wave == 31 && rule.wave == 29) continue;
 			if (rule.priority != 0 || completed.contains(rule.name)
 				|| room.wave < 20 && rule.wave != 10 && rule.wave != 20) continue;
 			if (rule.wave <= room.wave)
@@ -437,12 +481,34 @@ public final class RangerStrategy
 		return reservations.stream().min(Comparator.comparingInt(r -> r.due)).orElse(null);
 	}
 
-	private static boolean fits(Room room, Reservation next, Decision action, int tick)
+	private static final class Candidate
 	{
-		if (next == null || next.rule.name.equals(action.rule)) return true;
-		int approach = Math.max(0, action.target.distance(room.player) - action.weapon.range + 1) / 2;
-		int reposition = (room.player.distanceTo(next.rule.stage) + 1) / 2;
-		return tick + approach + Math.max(action.weapon.cooldown, reposition) <= next.due;
+		final Decision decision;
+		final int score, at;
+		final Tile position;
+		Candidate(Decision decision, int score, int at, Tile position)
+		{
+			this.decision = decision; this.score = score; this.at = at; this.position = position;
+		}
+	}
+
+	private static void add(List<Candidate> candidates, Room room, Reservation next, Decision action, int score, int tick, int last)
+	{
+		Crab crab = action.target;
+		for (int at = Math.max(tick, room.ready); at <= Math.min(tick + 12, Math.min(last, crab.born + 48)); at++)
+		{
+			Style color = RangerFlickers.at(crab, tick - crab.born) != crab.style ? crab.style : RangerFlickers.at(crab, at + 1 - crab.born);
+			if (color != action.weapon.style) continue;
+			Tile target = AttackTiming.position(crab.point, crab.lane.ordinal(), tick - crab.born, at + 1 - tick);
+			Tile position = AttackTiming.attackTile(room.player, target, crab.big, action.weapon.range);
+			int travel = (room.player.distanceTo(position) + 1) / 2;
+			if (room.obstructed.contains(crab.key)) travel = Math.max(1, travel);
+			if (tick + travel > at || AttackTiming.distance(position, target, crab.big) > action.weapon.range) continue;
+			if (next != null && !next.rule.name.equals(action.rule)
+				&& at + Math.max(action.weapon.cooldown, (position.distanceTo(next.rule.stage) + 1) / 2) > next.due) return;
+			candidates.add(new Candidate(action, score, at, position));
+			return;
+		}
 	}
 
 	static Decision staging(Room room, Reservation next, String reason)

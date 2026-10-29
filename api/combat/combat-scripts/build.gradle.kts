@@ -61,7 +61,7 @@ tasks.register<Test>("simulateNylocas") {
     filter { includeTestsMatching("*NylocasSimulationTest") }
     systemProperty("junit.jupiter.extensions.autodetection.enabled", true)
     systemProperty("nylo.simulation", "true")
-    for (key in listOf("trials", "seed", "maxTicks", "output")) {
+    for (key in listOf("trials", "seed", "maxTicks", "output", "trace")) {
         providers.gradleProperty("nylo.$key").orNull?.let { systemProperty("nylo.$key", it) }
     }
     outputs.upToDateWhen { false }

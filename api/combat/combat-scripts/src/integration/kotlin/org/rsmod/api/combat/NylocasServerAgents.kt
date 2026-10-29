@@ -49,6 +49,8 @@ import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.PlayerList
+import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.game.entity.util.ShuffledPlayerList
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.region.Region
@@ -66,6 +68,7 @@ constructor(
     val regions: RegionRegistry,
     val steps: StepFactory,
     val npcs: NpcList,
+    val players: PlayerList,
     val areas: AreaIndex,
     val rays: RayCastValidator,
     val bounds: BoundValidator,
@@ -113,13 +116,15 @@ internal class NylocasServerAgents(
     private val gear = arrayOf(mutableMapOf<Int, InvObj>(), mutableMapOf<Int, InvObj>())
     private val nextDrink = IntArray(2)
     private val offensiveStyle = intArrayOf(1, 2)
+    private val traceEnabled = java.lang.Boolean.getBoolean("nylo.trace")
     private var serial = 0
     private var tick = 0
     private var rangedPending: RangerStrategy.Decision? = null
     private var magicPending: MageStrategy.Decision? = null
     val attacks = IntArray(2)
-    val idle = IntArray(2)
-    val readyIdle = IntArray(2)
+    private val combatIdle = NylocasCombatIdle()
+    val idle get() = combatIdle.idle
+    val readyIdle get() = combatIdle.readyIdle
     val targets = IdentityHashMap<Npc, Int>()
     private val tickTargets = IdentityHashMap<Npc, Int>()
     private val attackedThisTick = BooleanArray(2)
@@ -129,6 +134,14 @@ internal class NylocasServerAgents(
         (1..255).first { deps.spells.getAutocastSpell(it)?.obj?.id == objs.spell_ice_barrage.id }
 
     init {
+        scope.eventBus.subscribeUnbound(NpcHitEvents.Applied::class.java) {
+            if (hit.isFromPlayer && !hit.isThrall) {
+                when (hit.resolvePlayerSource(deps.players)) {
+                    rangerPlayer -> rangedCrabs[npc]?.ownHitUntil = 0
+                    magePlayer -> magicCrabs[npc]?.ownHitUntil = 0
+                }
+            }
+        }
         scope.eventBus.subscribeUnbound(PlayerAttackTarget::class.java) {
             val role =
                 when (player) {
@@ -170,6 +183,7 @@ internal class NylocasServerAgents(
             tickTargets.clear()
             attackedThisTick.fill(false)
             val live = deps.npcs.filter { it.visType.id in 8342..8353 }
+            val livingBefore = live.any { it.hitpoints > 0 && queues.death !in it.queueList }
             rangedCrabs.keys.retainAll(live.toSet())
             magicCrabs.keys.retainAll(live.toSet())
             val wave = rangerPlayer.vars[tob_varbits.progress_value].coerceIn(0, 31)
@@ -301,13 +315,30 @@ internal class NylocasServerAgents(
             } else if (mn != null && m.approach != null)
                 magePlayer.moveGameClick(approach(magePlayer, mn, m.weapon.range, m.tile))
             else magePlayer.moveGameClick(coords(m.tile))
+            val rangerDelay = rangerPlayer.actionDelay - deps.clock.cycle
+            val mageDelay = magePlayer.actionDelay - deps.clock.cycle
             advance()
+            if (traceEnabled) {
+                val rangedSnapshot = rangedRoom.crabs.joinToString(";") {
+                    listOf(it.key, it.wave, tick - it.born, it.style, it.big, it.hp,
+                        it.point.x, it.point.y, it.claimedUntil, it.ownHitUntil, it.dying).joinToString(",")
+                }
+                val magicSnapshot = magicRoom.crabs.joinToString(";") {
+                    listOf(it.key, it.wave, tick - it.born, it.style, it.big, it.hp,
+                        it.point.x, it.point.y, it.claimedUntil, it.ownHitUntil, it.dying).joinToString(",")
+                }
+                println(listOf("NYLO_TRACE", tick, 0, wave, ready[0], attackedThisTick[0],
+                    rangedRoom.player, r.weapon, r.target?.key ?: r.approach?.key ?: -1,
+                    r.rule, r.reason, rangedSnapshot).joinToString("\t"))
+                println(listOf("NYLO_TRACE", tick, 1, wave, ready[1], attackedThisTick[1],
+                    magicRoom.player, m.weapon, m.target?.key ?: m.approach?.key ?: -1,
+                    m.rule, m.reason, magicSnapshot).joinToString("\t"))
+                println("NYLO_ENGINE\t$tick\t$rangerDelay,$mageDelay\t${rn?.hitpoints},${mn?.hitpoints}\t${tile(rangerPlayer.coords)},${tile(magePlayer.coords)}")
+            }
             if (attackedThisTick[0]) rangedRoom.ready = tick + r.weapon.cooldown
             if (attackedThisTick[1]) magicRoom.ready = tick + m.weapon.cooldown
-            for (role in 0..1) if (!attackedThisTick[role]) {
-                idle[role]++
-                if (ready[role]) readyIdle[role]++
-            }
+            val livingAfter = deps.npcs.any { it.visType.id in 8342..8353 && it.hitpoints > 0 && queues.death !in it.queueList }
+            combatIdle.observe(livingBefore || livingAfter, attackedThisTick, ready)
         }
 
     private fun support(player: Player, role: Int, style: Int) =

@@ -8,10 +8,13 @@ import java.util.List;
 import java.util.Set;
 import org.localscape.nylocas.Tile;
 import org.localscape.nylocas.NylocasFlickers;
+import org.localscape.nylocas.AttackIntent;
+import org.localscape.nylocas.AttackTiming;
 
 /** Mage-only policy. Offsets are request ticks, one before the Blert animation observations. */
 public final class MageStrategy
 {
+	public static final int MAX_WAVE_AGE = 4;
 	public enum Style { MELEE, RANGE, MAGIC }
 	public enum Lane { WEST, SOUTH, EAST, SPLIT }
 	public enum Weapon
@@ -44,7 +47,7 @@ public final class MageStrategy
 		public Tile point;
 		public Style style;
 		public boolean fighting, dying;
-		public int hp, claimedUntil, ownHitUntil;
+		public int hp, claimedUntil, ownHitUntil, ownHitHp;
 		public Crab(int key, int index, int born, int wave, Lane lane, char slot, boolean big, Style style, Tile point)
 		{
 			this.key = key; this.index = index; this.born = born; this.wave = wave;
@@ -57,6 +60,7 @@ public final class MageStrategy
 			return Math.max(Math.max(point.getX() - from.getX(), from.getX() - point.getX() - size + 1),
 				Math.max(point.getY() - from.getY(), from.getY() - point.getY() - size + 1));
 		}
+		public boolean awaitingHit(int tick) { return ownHitUntil > 0 && tick <= ownHitUntil && hp >= ownHitHp; }
 	}
 
 	public static final class Room
@@ -78,6 +82,7 @@ public final class MageStrategy
 		public final boolean special;
 		public final String rule, reason;
 		public Crab approach;
+		public boolean pathToTarget;
 		public Decision(Crab target, Weapon weapon, Tile tile, boolean special, String rule, String reason)
 		{
 			this.target = target; this.weapon = weapon; this.tile = tile; this.special = special;
@@ -122,6 +127,7 @@ public final class MageStrategy
 		new Assignment("South melee 13", 13, Lane.SOUTH, 'W', false, Weapon.SULPHUR, 11, 29, 3292, 4245),
 		new Assignment("West melee 14", 14, Lane.WEST, 'S', false, Weapon.SULPHUR, 8, 24, 3291, 4248),
 		new Assignment("West melee 15", 15, Lane.WEST, 'N', false, Weapon.SULPHUR, 7, 24, 3290, 4249),
+		new Assignment("West ranged 15", 15, Lane.WEST, 'S', false, Weapon.DARTS, 6, 24, 3291, 4248),
 		new Assignment("Deferred east big 13", 13, Lane.EAST, (char) 0, true, Weapon.SCYTHE, 25, 40, 3294, 4249),
 		new Assignment("East big 19", 19, Lane.EAST, (char) 0, true, Weapon.EYE, 3, 25, 3296, 4248),
 		new Assignment("South big 19", 19, Lane.SOUTH, (char) 0, true, Weapon.EYE, 8, 25, 3296, 4246),
@@ -131,6 +137,7 @@ public final class MageStrategy
 		new Assignment("West melee big 25", 25, Lane.WEST, (char) 0, true, Weapon.SCYTHE, 6, 20, 3291, 4248),
 		new Assignment("West big 26", 26, Lane.WEST, (char) 0, true, Weapon.EYE, 2, 25, 3291, 4248),
 		new Assignment("West big 27", 27, Lane.WEST, (char) 0, true, Weapon.EYE, 1, 25, 3292, 4248),
+		new Assignment("South big 29", 29, Lane.SOUTH, (char) 0, true, Weapon.SCYTHE, 0, 7, 3295, 4243),
 		new Assignment("East big 30", 30, Lane.EAST, (char) 0, true, Weapon.EYE, 1, 25, 3297, 4249),
 		new Assignment("East magic 31", 31, Lane.EAST, 'N', false, Weapon.EYE, 1, 25, 3300, 4249)
 	);
@@ -138,9 +145,10 @@ public final class MageStrategy
 	private static final int[] DELAYS = {0, 4, 4, 4, 4, 16, 4, 12, 4, 12, 8, 8, 8, 8, 8, 8, 4, 12, 8, 12, 16, 8, 12, 8, 8, 8, 4, 8, 4, 4, 4, 0};
 	private final Set<String> completed = new HashSet<>();
 	private final Set<Integer> opened = new HashSet<>();
+	private final AttackIntent<Weapon> intent = new AttackIntent<>();
 	private int scythe12 = -1, barrage21 = -1;
 
-	public void reset() { completed.clear(); opened.clear(); scythe12 = barrage21 = -1; }
+	public void reset() { completed.clear(); opened.clear(); intent.clear(); scythe12 = barrage21 = -1; }
 
 	public void attacked(Decision decision, int observationTick)
 	{
@@ -149,6 +157,7 @@ public final class MageStrategy
 
 	public void attacked(Decision decision, int observationTick, int requestTick)
 	{
+		intent.clear();
 		if (decision.rule != null) completed.add(decision.rule);
 		opened.add(decision.target.key);
 		// AnimationChanged can precede the next GameTick counter increment.
@@ -157,12 +166,14 @@ public final class MageStrategy
 		if ("12 east scythe".equals(decision.rule)) scythe12 = anchor;
 		if ("21 west barrage".equals(decision.rule)) barrage21 = anchor;
 		decision.target.ownHitUntil = observationTick + (decision.weapon.style == Style.MELEE ? 1 : 2);
+		decision.target.ownHitHp = decision.target.hp;
 	}
 
 	static boolean eligible(Room room, Crab c, int tick)
 	{
-		return !c.dying && c.claimedUntil <= tick && c.ownHitUntil <= tick && tick - c.born < 49
-			&& (room.wave < 29 || c.wave >= 30);
+		return !c.dying && c.claimedUntil <= tick && !c.awaitingHit(tick) && tick - c.born < 49
+			&& room.wave - c.wave <= MAX_WAVE_AGE && !rangerOwned(c)
+			&& (room.wave < 31 || c.wave != 29);
 	}
 
 	public static boolean matchesNext(Crab c, Style style, int tick)
@@ -275,18 +286,21 @@ public final class MageStrategy
 				if (tick < w.due) continue;
 				if (w.weapon == Weapon.DINH && room.specialEnergy < 500) continue;
 				Crab target = packetTarget(room, w, tick);
-				if (target != null) return new Decision(target, w.weapon, w.stage, w.weapon == Weapon.DINH, w.name, w.name);
+				if (target != null)
+				{
+					intent.clear();
+					return new Decision(target, w.weapon, w.stage, w.weapon == Weapon.DINH, w.name, w.name);
+				}
 			}
 		}
-		Decision best = null;
-		int bestScore = Integer.MIN_VALUE;
+		List<Candidate> candidates = new ArrayList<>();
 		for (Crab c : room.crabs)
 		{
-			if (!eligible(room, c, tick) || protectedTarget(c, tick)) continue;
+			if (!eligible(room, c, tick) || protectedTarget(room, c, tick)) continue;
 			int age = tick - c.born;
 			for (Assignment a : ASSIGNMENTS)
 			{
-				if (!a.matches(c) || age < a.first || age > a.last) continue;
+				if (!a.matches(c) || age > a.last) continue;
 				Weapon weapon = a.weapon == Weapon.SHADOW && !room.shadowOpening ? Weapon.EYE : a.weapon;
 				// One cast covers a lane group; surviving magic is reconsidered with Ayak.
 				if (weapon == Weapon.BARRAGE && completed.contains(a.name)) weapon = Weapon.EYE;
@@ -294,13 +308,14 @@ public final class MageStrategy
 				int score = 12000 - age * 65 + (opened.contains(c.key) && c.big ? 500 : 0);
 				if (a.name.equals("South opener 20")) score += 5000;
 				Decision d = new Decision(c, weapon, a.stage, false, a.name, a.name);
-				if (fits(room, next, d, tick) && score > bestScore) { best = d; bestScore = score; }
+				add(candidates, room, next, d, score, tick, c.born + a.first, c.born + a.last);
 			}
 			Weapon weapon = c.style == Style.MAGIC ? Weapon.EYE : c.style == Style.MELEE ? Weapon.SULPHUR : Weapon.DARTS;
 			if (!matchesNext(c, weapon.style, tick)) continue;
-			if (c.big && !finishBig(c, room, tick)) continue;
-			if (!c.big && c.style == Style.MAGIC && rangerMagic(c)) continue;
-			if (c.style == Style.RANGE && (c.big || c.distance(room.player) > Weapon.DARTS.range)) continue;
+			if (c.big && !finishBig(c, room, tick) || c.style == Style.RANGE) continue;
+			// Lane assignments own their opening offset and weapon. Generic cleanup
+			// must not bypass the rotation while that assignment is still pending.
+			if (ASSIGNMENTS.stream().anyMatch(a -> a.matches(c) && !completed.contains(a.name) && age <= a.last)) continue;
 			int score = (c.style == Style.MAGIC ? 6500 : c.style == Style.MELEE ? 5000 : 500) - age * 100;
 			if (c.big) score = 10000 - age * 70;
 			if (c.style == Style.MAGIC && !c.big && room.wave >= 20 && room.wave <= 22 && c.point.getY() <= 4247) score += 5000;
@@ -308,48 +323,90 @@ public final class MageStrategy
 			if (!c.big && c.style == Style.MELEE && cluster(room, c, tick) >= 2) { weapon = Weapon.SCYTHE; score += 2200; }
 			if (!c.big) score += Math.max(0, 8 - c.hp) * 40;
 			Decision d = new Decision(c, weapon, c.point, false, null, "Fresh " + c.style + (c.big ? " assigned big" : " small"));
-			if (fits(room, next, d, tick) && score > bestScore) { best = d; bestScore = score; }
+			add(candidates, room, next, d, score, tick, tick, c.born + 48);
 		}
+		Comparator<Candidate> priority = Comparator.comparingInt((Candidate c) -> deferred(c, tick) ? 0 : 1)
+			.thenComparingInt(c -> -c.decision.target.wave)
+			.thenComparingInt(c -> c.decision.rule == null ? 1 : 0)
+			.thenComparingInt(c -> c.first)
+			.thenComparingInt(c -> c.at).thenComparingInt(c -> -c.score)
+			.thenComparingInt(c -> c.decision.target.key);
+		Candidate best = candidates.stream().min(priority).orElse(null);
 		if (best != null)
 		{
-			if (tick < room.ready || !reachableNow(room, best.target, best.weapon, tick))
+			Candidate selected = best;
+			// Commit within the same rotation step; a newer birth wave or a due
+			// packet can replace an older approach.
+			best = candidates.stream().filter(c -> c.at <= selected.at
+				&& c.decision.target.wave == selected.decision.target.wave
+				&& (c.decision.rule == null) == (selected.decision.rule == null)
+				&& c.first == selected.first && deferred(c, tick) == deferred(selected, tick)
+				&& intent.matches(c.decision.target.key, c.decision.weapon, tick))
+				.min(priority).orElse(best);
+			Decision action = best.decision;
+			action.pathToTarget = best.at > tick && tick >= best.first && tick >= room.ready && !room.obstructed.contains(action.target.key);
+			intent.select(action.target.key, action.weapon, tick);
+			if (tick < best.first) return stage(action.weapon, action.tile, "Prepare " + action.reason);
+			if (best.at > tick && !action.pathToTarget)
 			{
-				Decision d = stage(best.weapon, best.tile, "Approach: " + best.reason);
-				d.approach = best.target;
-				// A hard window needs its exact staging tile, not a detour during cooldown.
-				if (next != null && tick + Math.max(room.ready - tick, (room.player.distanceTo(next.stage) + 1) / 2) >= next.due)
-					return stage(next.weapon, next.stage, "Reserve " + next.name);
+				Decision d = stage(action.weapon, best.position, "Plan " + action.weapon + " #" + action.target.index
+					+ " @" + best.at + ": " + action.reason);
+				d.approach = action.target;
 				return d;
 			}
-			return best;
+			return action;
 		}
+		intent.clear();
 		if (next != null) return stage(next.weapon, next.stage, "Reserve " + next.name);
 		Assignment upcoming = ASSIGNMENTS.stream().filter(a -> a.wave == room.wave + 1)
 			.min(Comparator.comparingInt(a -> a.first)).orElse(null);
 		if (upcoming != null) return stage(upcoming.weapon, upcoming.stage, "Prepare " + upcoming.name);
 		return stage(Weapon.EYE, room.wave >= 29 ? tile(3297, 4249) : tile(3295, 4248),
-			room.wave >= 29 ? "Ignore births through wave 29; prepare fresh magic" : "Clear complete; stage");
+			room.wave == 31 ? "Clear survivors except wave 29" : "Clear complete; stage");
 	}
 
-	private boolean fits(Room room, Window next, Decision d, int tick)
+	private static final class Candidate
 	{
-		if (next == null || next.name.equals("22 south Dinh") && tick > next.due + 1) return true;
-		int attack = Math.max(tick, room.ready) + Math.max(0, d.target.distance(room.player) - d.weapon.range + 1) / 2;
-		int travel = (Math.max(room.player.distanceTo(next.stage), d.target.point.distanceTo(next.stage) - d.weapon.range) + 1) / 2;
-		// If the due target is gone/claimed/absent, hold through its short packet
-		// window; never let filler consume the next possible on-time request.
-		return attack + Math.max(d.weapon.cooldown, travel) <= next.due;
+		final Decision decision;
+		final int score, first, at;
+		final Tile position;
+		Candidate(Decision decision, int score, int first, int at, Tile position)
+		{
+			this.decision = decision; this.score = score; this.first = first; this.at = at; this.position = position;
+		}
 	}
 
-	private static boolean reachableNow(Room room, Crab c, Weapon w, int tick)
+	private static boolean deferred(Candidate candidate, int tick)
 	{
-		int step = c.lane != Lane.SPLIT && tick - c.born < 9 ? 1 : 0;
-		return c.distance(room.player) <= w.range + step && !room.obstructed.contains(c.key);
+		return "Deferred east big 13".equals(candidate.decision.rule) && tick >= candidate.first;
 	}
 
-	private boolean protectedTarget(Crab c, int tick)
+	private void add(List<Candidate> candidates, Room room, Window next, Decision d, int score, int tick, int first, int last)
 	{
-		if (c.wave == 26 && c.lane == Lane.SOUTH && c.big) return true;
+		Crab c = d.target;
+		for (int at = Math.max(first, Math.max(tick, room.ready)); at <= Math.min(tick + 12, Math.min(last, c.born + 48)); at++)
+		{
+			int age = tick - c.born;
+			int model = NylocasFlickers.at(c.wave, c.lane.ordinal(), c.slot, c.style.ordinal(), age);
+			int color = model != c.style.ordinal() ? c.style.ordinal()
+				: NylocasFlickers.at(c.wave, c.lane.ordinal(), c.slot, c.style.ordinal(), at + 1 - c.born);
+			if (color != d.weapon.style.ordinal()) continue;
+			Tile target = AttackTiming.position(c.point, c.lane.ordinal(), age, at + 1 - tick);
+			Tile position = AttackTiming.attackTile(room.player, target, c.big, d.weapon.range);
+			int travel = (room.player.distanceTo(position) + 1) / 2;
+			if (room.obstructed.contains(c.key)) travel = Math.max(1, travel);
+			if (tick + travel > at || AttackTiming.distance(position, target, c.big) > d.weapon.range) continue;
+			// Travel during cooldown overlaps it, both on approach and on return to a packet.
+			if (next != null && !(next.name.equals("22 south Dinh") && tick > next.due + 1)
+				&& at + Math.max(d.weapon.cooldown, (position.distanceTo(next.stage) + 1) / 2) > next.due) return;
+			candidates.add(new Candidate(d, score, first, at, position));
+			return;
+		}
+	}
+
+	private boolean protectedTarget(Room room, Crab c, int tick)
+	{
+		if (c.wave == 26 && c.lane == Lane.SOUTH && c.big && room.wave < 29) return true;
 		if (c.wave == 12 && !c.big && (c.lane == Lane.EAST && !completed.contains("12 east scythe")
 			|| c.lane == Lane.WEST && c.slot == 'S' && !completed.contains("12 west Dinh"))) return true;
 		if (c.wave == 21 && c.lane == Lane.WEST && !c.big && !completed.contains("21 west barrage") && tick - c.born < 3) return true;
@@ -363,6 +420,14 @@ public final class MageStrategy
 			|| c.wave == 11 && c.lane == Lane.SOUTH && c.slot == 'E'
 			|| c.wave == 13 && c.lane == Lane.WEST || c.wave == 14 && c.lane == Lane.SOUTH
 			|| c.wave == 15 && c.lane == Lane.EAST);
+	}
+
+	private static boolean rangerOwned(Crab c)
+	{
+		if (c.big || c.lane == Lane.SPLIT) return false;
+		return c.wave == 16 || c.wave == 2 && c.lane == Lane.SOUTH && c.slot == 'W'
+			|| c.style == Style.MAGIC && rangerMagic(c)
+			|| c.style == Style.RANGE && !(c.wave == 15 && c.lane == Lane.WEST && c.slot == 'S');
 	}
 
 	private boolean finishBig(Crab c, Room room, int tick)
