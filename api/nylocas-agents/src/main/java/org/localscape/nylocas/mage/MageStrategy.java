@@ -20,10 +20,12 @@ public final class MageStrategy
 	public enum Weapon
 	{
 		EYE(31113, Style.MAGIC, 3, 8, 3),
-		SHADOW(27275, Style.MAGIC, 5, 10, 0),
+		SHADOW(27275, Style.MAGIC, 5, 10, 3),
+		// Spell casts already reach ten tiles; an ordinary staff has no longrange stance.
 		BARRAGE(27624, Style.MAGIC, 5, 10, 0),
 		SCYTHE(22325, Style.MELEE, 5, 1, 1),
 		SULPHUR(29084, Style.MELEE, 4, 1, 1),
+		// Pummel is Dinh's only attacking stance; Block cannot launch the special.
 		DINH(21015, Style.MELEE, 5, 1, 0),
 		DARTS(11230, Style.RANGE, 2, 3, 1);
 
